@@ -15,6 +15,10 @@ import sf_quant.optimizer as sfo
 CONSTRAINT_REGISTRY: dict[str, type] = {
     "ZeroBeta": sfo.constraints.ZeroBeta,
     "ZeroInvestment": sfo.constraints.ZeroInvestment,
+    "UnitBeta": sfo.constraints.UnitBeta,
+    "FullInvestment": sfo.constraints.FullInvestment,
+    "LongOnly": sfo.constraints.LongOnly,
+    "NoBuyingOnMargin": sfo.constraints.NoBuyingOnMargin
 }
 
 
