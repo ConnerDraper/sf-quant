@@ -14,10 +14,10 @@ pip install sf-backtester
 
 ```bash
 # Run backtest
-sf_backtester run config.yml
+sf_backtester config.yml
 
 # Preview sbatch script without submitting
-sf_backtester run config.yml --dry-run
+sf_backtester config.yml --dry-run
 ```
 
 ### Python API
