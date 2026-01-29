@@ -106,3 +106,30 @@ Input parquet must have columns:
 - `predicted_beta`: Predicted beta values
 
 Output is one parquet per year in `output_dir/{year}.parquet` containing portfolio weights.
+
+## Publishing
+1. Bump the version
+
+```bash
+uv version v*.*.*
+```
+
+2. Add changes (it can be just the version change)
+
+```bash
+git add .
+git commit -m "Bumped version."
+```
+
+3. Tag the branch
+
+```bash
+git tag v*.*.*
+```
+
+4. Push to origin
+
+```bash
+git push origin/main --tags
+```
+
