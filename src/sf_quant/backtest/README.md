@@ -130,6 +130,6 @@ git tag v*.*.*
 4. Push to origin
 
 ```bash
-git push origin/main --tags
+git push --tags
 ```
 
