@@ -35,7 +35,6 @@ def run_backtest_by_year(
 
     filtered = (
         df.filter(pl.col("date").is_between(year_start, year_end))
-        .select(["date", "barrid", "alpha", "predicted_beta"])
         .collect()
     )
 
