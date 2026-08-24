@@ -5,8 +5,13 @@ from pathlib import Path
 
 import polars as pl
 
-from sf_backtester.config import BacktestConfig, BacktestDynamicConfig
-from sf_backtester.slurm import generate_sbatch_script, generate_sbatch_script_dynamic, submit_job
+from sf_backtester.config import BacktestConfig, BacktestCostAwareConfig, BacktestDynamicConfig
+from sf_backtester.slurm import (
+    generate_sbatch_script,
+    generate_sbatch_script_cost_aware,
+    generate_sbatch_script_dynamic,
+    submit_job,
+)
 
 
 class BacktestRunner:
@@ -180,6 +185,73 @@ class BacktestDynamicRunner:
         print(f"Output directory: {self.config.output_dir}")
 
         script = generate_sbatch_script_dynamic(self.config, years)
+        result = submit_job(script, dry_run=dry_run)
+
+        if result is not None:
+            print("Job submitted successfully!")
+            print(f"sbatch output: {result.stdout}")
+            if result.stderr:
+                print(f"sbatch stderr: {result.stderr}")
+
+
+class BacktestCostAwareRunner:
+    """Orchestrates a cost-aware sequential backtest via SLURM.
+
+    Unlike parallel runners, this submits a single SLURM job that runs
+    the entire backtest sequentially to maintain warm-start continuity
+    and proper turnover cost tracking.
+    """
+
+    def __init__(self, config: BacktestCostAwareConfig) -> None:
+        self.config = config
+        self._data: pl.DataFrame | None = None
+
+    @classmethod
+    def from_yaml(cls, config_path: str | Path) -> "BacktestCostAwareRunner":
+        config = BacktestCostAwareConfig.from_yaml(config_path)
+        return cls(config)
+
+    def load_data(self, data: pl.DataFrame | None = None) -> pl.DataFrame:
+        if data is not None:
+            self._data = data
+        elif self._data is None:
+            self._data = pl.read_parquet(self.config.data_path)
+        return self._data
+
+    def prepare(self, data: pl.DataFrame | None = None) -> None:
+        os.makedirs(self.config.output_dir, exist_ok=True)
+        os.makedirs(self.config.logs_dir, exist_ok=True)
+
+        temp_dir = Path(self.config.project_root) / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        if data is not None:
+            data.write_parquet(self.config.data_path)
+            self._data = data
+
+    def submit(
+        self,
+        data: pl.DataFrame | None = None,
+        dry_run: bool = False,
+    ) -> None:
+        """Submit the cost-aware backtest job to SLURM.
+
+        Args:
+            data: Optional DataFrame to backtest. If not provided, loads from config.
+            dry_run: If True, print the script instead of submitting.
+        """
+        self.prepare(data)
+        df = self.load_data(data)
+
+        n_dates = df["date"].n_unique()
+        print(f"Preparing cost-aware sequential backtest: {n_dates} dates")
+        print(f"Signal: {self.config.signal_name}")
+        print(f"Gamma: {self.config.gamma}")
+        print(f"Cost model: {self.config.cost_model.type}")
+        print(f"Constraints: {self.config.constraints}")
+        print(f"Output directory: {self.config.output_dir}")
+
+        script = generate_sbatch_script_cost_aware(self.config)
         result = submit_job(script, dry_run=dry_run)
 
         if result is not None:

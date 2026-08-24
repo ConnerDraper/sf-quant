@@ -1,5 +1,7 @@
 """Configuration management for sf-backtester."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self
@@ -132,6 +134,95 @@ class BacktestDynamicConfig:
             "project_root": self.project_root,
             "byu_email": self.byu_email,
             "constraints": self.constraints,
+            "slurm": {
+                "n_cpus": self.slurm.n_cpus,
+                "mem": self.slurm.mem,
+                "time": self.slurm.time,
+                "mail_type": self.slurm.mail_type,
+                "max_concurrent_jobs": self.slurm.max_concurrent_jobs,
+            },
+            "output_dir": self.output_dir,
+            "logs_dir": self.logs_dir,
+        }
+        with open(path, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+@dataclass
+class CostModelConfig:
+    """Transaction cost model configuration."""
+
+    type: str = "spread"
+    target_median_bps: float = 7.5
+    fixed_bps: float = 5.0
+
+
+@dataclass
+class BacktestCostAwareConfig:
+    """Configuration for a cost-aware sequential backtest.
+
+    Unlike parallel backtests that split by year, cost-aware backtests
+    run sequentially across the full date range to maintain warm-starting
+    continuity and proper turnover cost tracking.
+    """
+
+    # Required fields
+    signal_name: str
+    data_path: str
+    gamma: float
+
+    # Environment/paths
+    project_root: str
+    byu_email: str
+
+    # Constraints
+    constraints: list[str]
+
+    # Cost model configuration
+    cost_model: CostModelConfig
+
+    # SLURM (single job, no array needed)
+    slurm: SlurmConfig
+
+    # Output configuration
+    output_dir: str | None = None
+    logs_dir: str | None = None
+
+    def __post_init__(self) -> None:
+        """Set derived paths if not provided."""
+        if self.output_dir is None:
+            self.output_dir = (
+                f"{self.project_root}/weights/{self.signal_name}/{self.gamma}_cost_aware"
+            )
+        if self.logs_dir is None:
+            self.logs_dir = f"logs/{self.signal_name}/{self.gamma}_cost_aware"
+
+        if isinstance(self.slurm, dict):
+            self.slurm = SlurmConfig(**self.slurm)
+        if isinstance(self.cost_model, dict):
+            self.cost_model = CostModelConfig(**self.cost_model)
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> Self:
+        """Load configuration from a YAML file."""
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return cls(**data)
+
+    def to_yaml(self, path: str | Path) -> None:
+        """Save configuration to a YAML file."""
+        data = {
+            "signal_name": self.signal_name,
+            "data_path": self.data_path,
+            "gamma": self.gamma,
+            "project_root": self.project_root,
+            "byu_email": self.byu_email,
+            "constraints": self.constraints,
+            "cost_model": {
+                "type": self.cost_model.type,
+                "target_median_bps": self.cost_model.target_median_bps,
+                "fixed_bps": self.cost_model.fixed_bps,
+            },
             "slurm": {
                 "n_cpus": self.slurm.n_cpus,
                 "mem": self.slurm.mem,

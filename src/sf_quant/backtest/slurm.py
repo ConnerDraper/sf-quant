@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from sf_backtester.config import BacktestConfig, BacktestDynamicConfig
+from sf_backtester.config import BacktestConfig, BacktestCostAwareConfig, BacktestDynamicConfig
 
 
 def get_worker_script_path() -> Path:
@@ -128,6 +128,54 @@ srun python {worker_script} \\
     --output_dir "$OUTPUT_DIR" \\
     --n_cpus "$N_CPUS" \\
     --constraints $CONSTRAINTS
+"""
+    return script
+
+
+def get_cost_aware_worker_script_path() -> Path:
+    """Get the path to the bundled cost-aware worker script."""
+    ref = importlib.resources.files("sf_backtester.scripts").joinpath("mvo_cost_aware_worker.py")
+    with importlib.resources.as_file(ref) as path:
+        return Path(path)
+
+
+def generate_sbatch_script_cost_aware(config: BacktestCostAwareConfig) -> str:
+    """Generate the SBATCH script for a cost-aware sequential backtest.
+
+    Unlike parallel backtests, this runs as a single job (no array)
+    to maintain warm-start continuity across all dates.
+    """
+    constraints_str = " ".join(config.constraints)
+    worker_script = get_cost_aware_worker_script_path()
+
+    script = f"""#!/bin/bash
+#SBATCH --job-name={config.signal_name}_cost_aware_backtest
+#SBATCH --output={config.logs_dir}/backtest_%j.out
+#SBATCH --error={config.logs_dir}/backtest_%j.err
+#SBATCH --cpus-per-task={config.slurm.n_cpus}
+#SBATCH --mem={config.slurm.mem}
+#SBATCH --time={config.slurm.time}
+#SBATCH --mail-user={config.byu_email}
+#SBATCH --mail-type={config.slurm.mail_type}
+
+DATA_PATH="{config.data_path}"
+OUTPUT_DIR="{config.output_dir}"
+GAMMA="{config.gamma}"
+CONSTRAINTS="{constraints_str}"
+COST_TYPE="{config.cost_model.type}"
+TARGET_MEDIAN_BPS="{config.cost_model.target_median_bps}"
+FIXED_BPS="{config.cost_model.fixed_bps}"
+
+source {config.project_root}/.venv/bin/activate
+echo "Running cost-aware sequential backtest"
+srun python {worker_script} \\
+    --data_path "$DATA_PATH" \\
+    --gamma "$GAMMA" \\
+    --output_dir "$OUTPUT_DIR" \\
+    --constraints $CONSTRAINTS \\
+    --cost_type "$COST_TYPE" \\
+    --target_median_bps "$TARGET_MEDIAN_BPS" \\
+    --fixed_bps "$FIXED_BPS"
 """
     return script
 
