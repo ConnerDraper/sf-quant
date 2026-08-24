@@ -80,13 +80,14 @@ def load_exposures(start: dt.date, end: dt.date, in_universe: bool, columns: lis
         return (
             exposures_table.scan()
             .filter(pl.col("date").is_between(start, end))
-            .select('date', 'barrid', *columns)
+            .select(columns)
             .sort("barrid", "date")
             .collect()
         )
 
 
 def load_exposures_by_date(date_: dt.date) -> pl.DataFrame:
+    """Load all factor exposures for a single date."""
     return (
         exposures_table.scan(date_.year)
         .filter(pl.col("date").eq(date_))

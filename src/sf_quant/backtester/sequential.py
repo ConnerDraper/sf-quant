@@ -1,5 +1,10 @@
+from __future__ import annotations
+
+import numpy as np
 import polars as pl
 import tqdm
+
+from sf_quant.costs import CostModel
 from sf_quant.data.covariance_matrix import construct_factor_model_components
 from sf_quant.optimizer.optimizers import mve_optimizer
 from sf_quant.optimizer.constraints import Constraint
@@ -7,16 +12,24 @@ from sf_quant.schema.portfolio_schema import PortfolioSchema
 
 
 def backtest_sequential(
-    data: pl.DataFrame, constraints: list[Constraint], gamma: float = 2
+    data: pl.DataFrame,
+    constraints: list[Constraint],
+    gamma: float = 2,
+    cost_model: CostModel | None = None,
 ) -> pl.DataFrame:
     """
     Run a sequential backtest of portfolio optimization.
 
     This function iterates through unique dates in the input dataset,
-    constructs the covariance matrix for each date, and solves a mean–
+    constructs the covariance matrix for each date, and solves a mean-
     variance optimization (MVE) problem subject to user-specified
     constraints. The optimized portfolios are concatenated into a
     single Polars DataFrame.
+
+    When a ``cost_model`` is provided, the optimizer penalizes turnover
+    using estimated transaction costs, and the previous day's optimal
+    weights are used both as the turnover reference and as a warm-start
+    for the solver.
 
     Parameters
     ----------
@@ -36,6 +49,10 @@ def backtest_sequential(
         Risk aversion parameter. Higher values penalize portfolio variance more strongly.
         Default is 2.
 
+    cost_model : CostModel, optional
+        A transaction cost estimator. When provided, enables cost-aware optimization
+        with warm-starting from the previous period's weights.
+
     Returns
     -------
     pl.DataFrame
@@ -52,6 +69,8 @@ def backtest_sequential(
     - The factor model components are constructed using
       :func:`~sf_quant.data.covariance_matrix.construct_factor_model_components`.
     - Results are validated against :class:`~sf_quant.schema.portfolio_schema.PortfolioSchema`.
+    - When ``cost_model`` is set, the backtest must run sequentially because each
+      period depends on the previous period's weights.
 
     See Also
     --------
@@ -106,6 +125,8 @@ def backtest_sequential(
     """
     dates = data["date"].unique().sort().to_list()
     portfolio_list = []
+    prev_weights: np.ndarray | None = None
+
     for date_ in tqdm.tqdm(dates, "Running backtest"):
         subset = data.filter(pl.col("date").eq(date_)).sort("barrid")
 
@@ -124,6 +145,8 @@ def backtest_sequential(
             specific_risk,
         ) = construct_factor_model_components(date_, barrids)
 
+        costs = cost_model.estimate(date_, barrids) if cost_model else None
+
         portfolio = mve_optimizer(
             ids=barrids,
             alphas=alphas,
@@ -133,7 +156,12 @@ def backtest_sequential(
             gamma=gamma,
             constraints=constraints,
             betas=betas,
+            prev_weights=prev_weights,
+            costs=costs,
+            warm_start=prev_weights,
         )
+
+        prev_weights = portfolio["weight"].to_numpy()
 
         portfolio = portfolio.with_columns(pl.lit(date_).alias("date")).select(
             "date", "barrid", "weight"

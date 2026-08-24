@@ -13,6 +13,9 @@ def mve_optimizer(
     constraints: list[Constraint],
     gamma: float = 2,
     betas: np.ndarray | None = None,
+    prev_weights: np.ndarray | None = None,
+    costs: np.ndarray | None = None,
+    warm_start: np.ndarray | None = None,
 ) -> pl.DataFrame:
     """
     Mean-variance optimizer using a factor risk model decomposition.
@@ -23,6 +26,13 @@ def mve_optimizer(
     .. math::
 
         \\Sigma = B F B^T + \\text{diag}(D)
+
+    When ``prev_weights`` and ``costs`` are provided, a turnover penalty
+    is subtracted from the objective:
+
+    .. math::
+
+        \\text{cost}^T |w - w_{\\text{prev}}|
 
     Parameters
     ----------
@@ -45,6 +55,14 @@ def mve_optimizer(
     betas : np.ndarray, optional
         Predicted betas or other asset-level values required by certain constraints
         such as ``UnitBeta`` or ``ZeroBeta``.
+    prev_weights : np.ndarray, optional
+        Previous period portfolio weights, shape (n_assets,). Required together
+        with ``costs`` to enable the turnover penalty.
+    costs : np.ndarray, optional
+        One-way transaction cost per unit traded, shape (n_assets,), in decimal.
+        Typically produced by a CostModel.
+    warm_start : np.ndarray, optional
+        Initial guess for the weight vector to warm-start the solver.
 
     Returns
     -------
@@ -92,6 +110,9 @@ def mve_optimizer(
         factor_exposures=factor_exposures,
         factor_covariance=factor_covariance,
         specific_risk=specific_risk,
+        prev_weights=prev_weights,
+        costs=costs,
+        warm_start=warm_start,
     )
 
     weights = pl.DataFrame({"barrid": ids, "weight": optimal_weights})
@@ -230,6 +251,9 @@ def _quadratic_program(
     specific_risk: np.ndarray,     # D: (N,) vector of idiosyncratic variance
     gamma: float,
     constraints: list[cp.Constraint],
+    prev_weights: np.ndarray | None = None,
+    costs: np.ndarray | None = None,
+    warm_start: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Solve a mean-variance optimization problem using a factor risk model.
@@ -238,13 +262,16 @@ def _quadratic_program(
 
     .. math::
 
-        \\max_w \\left( w^T \\alpha - \\frac{\\gamma}{2} w^T \\Sigma w \\right)
+        \\max_w \\left( w^T \\alpha - \\frac{\\gamma}{2} w^T \\Sigma w - c^T |w - w_{prev}| \\right)
 
     where :math:`\\Sigma` is the factor model covariance matrix:
 
     .. math::
 
         \\Sigma = B F B^T + \\text{diag}(D)
+
+    The turnover penalty term is only included when both ``prev_weights``
+    and ``costs`` are provided.
 
     Parameters
     ----------
@@ -260,6 +287,12 @@ def _quadratic_program(
         Risk aversion parameter. Higher values penalize variance more.
     constraints : list[cp.Constraint]
         List of instantiated CVXPY constraints.
+    prev_weights : np.ndarray, optional
+        Previous portfolio weights, shape (n_assets,).
+    costs : np.ndarray, optional
+        One-way cost per unit traded, shape (n_assets,).
+    warm_start : np.ndarray, optional
+        Initial guess for the decision variable to warm-start the solver.
 
     Returns
     -------
@@ -272,17 +305,24 @@ def _quadratic_program(
     constraints = [constraint(weights) for constraint in constraints]
 
     portfolio_return = weights.T @ alphas
-    # alternative, faster calculation of portfolio variance
     factor_loadings = factor_exposures.T @ weights
     factor_variance = cp.quad_form(factor_loadings, factor_covariance)
     specific_variance = cp.sum(cp.multiply(specific_risk, cp.square(weights)))
     portfolio_variance = factor_variance + specific_variance
-    #portfolio_variance = weights.T @ covariance_matrix @ weights
 
-    objective = cp.Maximize(portfolio_return - 0.5 * gamma * portfolio_variance)
+    objective_expr = portfolio_return - 0.5 * gamma * portfolio_variance
 
+    if prev_weights is not None and costs is not None:
+        turnover_cost = costs @ cp.abs(weights - prev_weights)
+        objective_expr -= turnover_cost
+
+    objective = cp.Maximize(objective_expr)
     problem = cp.Problem(objective, constraints)
-    problem.solve(solver="OSQP")
+
+    if warm_start is not None:
+        weights.value = warm_start
+
+    problem.solve(solver="OSQP", warm_start=warm_start is not None)
 
     return weights.value
 
