@@ -56,6 +56,11 @@ class MandateResult:
         weight is driven to zero.
     active_factor_exposures : np.ndarray
         :math:`B^T h`, shape (n_factors,).
+    factor_shadow_prices : np.ndarray
+        For each factor held neutral, the change in expected annual active
+        return per unit of active exposure if its neutrality were relaxed:
+        what that constraint costs. NaN for factors not held neutral or
+        dropped as redundant, shape (n_factors,).
     """
 
     ids: list[str]
@@ -68,6 +73,7 @@ class MandateResult:
     expected_active_return: float
     n_at_long_only_bound: int
     active_factor_exposures: np.ndarray
+    factor_shadow_prices: np.ndarray
 
     @property
     def ok(self) -> bool:
@@ -197,6 +203,8 @@ def mandate_optimizer(
     benchmark_weights: np.ndarray,
     target_active_risk: float = 0.05,
     factor_bounds: dict[int, float] | None = None,
+    neutral_factors: list[int] | None = None,
+    zero_active_beta: bool = True,
 ) -> MandateResult:
     """
     Solve the Silver Fund mandate problem for one rebalance date.
@@ -236,6 +244,13 @@ def mandate_optimizer(
     factor_bounds : dict[int, float], optional
         Optional caps on absolute active factor exposure, keyed by the
         column index of ``factor_exposures``.
+    neutral_factors : list[int], optional
+        Column indices of factors whose active exposure must be exactly zero.
+        Constraints that are implied by others (for example the country
+        factor, which equals the full-investment row when every asset has
+        exposure 1) are dropped before solving.
+    zero_active_beta : bool, optional
+        Enforce :math:`\beta^T h = 0`. Default True; the mandate requires it.
 
     Returns
     -------
@@ -274,12 +289,13 @@ def mandate_optimizer(
     beta = benchmark_betas(B, F, delta, b)
 
     if not np.any(alphas):
-        h = np.zeros(n_assets)
-        status = "optimal"
+        h, status, shadow = np.zeros(n_assets), "optimal", np.full(n_factors, np.nan)
     else:
-        h, status = _solve(alphas, B, F, delta, b, beta, target_active_risk, factor_bounds)
+        h, status, shadow = _solve(
+            alphas, B, F, delta, b, beta, target_active_risk, factor_bounds, neutral_factors or [], zero_active_beta
+        )
 
-    return _result(ids, h, status, time.perf_counter() - start, alphas, B, F, delta, b, beta, target_active_risk)
+    return _result(ids, h, status, time.perf_counter() - start, alphas, B, F, delta, b, beta, target_active_risk, shadow)
 
 
 def _validate_inputs(ids, alphas, B, F, delta, b, target_active_risk) -> None:
@@ -306,7 +322,7 @@ def _factor_root(F: np.ndarray) -> np.ndarray:
     return eigenvectors * np.sqrt(np.clip(eigenvalues, 0, None))
 
 
-def _solve(alphas, B, F, delta, b, beta, target_active_risk, factor_bounds):
+def _solve(alphas, B, F, delta, b, beta, target_active_risk, factor_bounds, neutral_factors, zero_active_beta):
     n_assets, n_factors = B.shape
 
     h = cp.Variable(n_assets)
@@ -315,32 +331,66 @@ def _solve(alphas, B, F, delta, b, beta, target_active_risk, factor_bounds):
 
     # Alpha and beta are normalized for conditioning; scale invariance means
     # neither changes the solution.
-    objective = cp.Maximize(h @ (alphas / np.linalg.norm(alphas)))
+    alpha_norm = np.linalg.norm(alphas)
+    objective = cp.Maximize(h @ (alphas / alpha_norm))
     constraints = [
         y == B.T @ h,
         cp.sum(h) == 0,
-        h @ (beta / np.linalg.norm(beta)) == 0,
         cp.SOC(
             cp.Constant(target_active_risk),
             cp.hstack([L.T @ y, cp.multiply(np.sqrt(delta), h)]),
         ),
         h >= -b,
     ]
+    mandate_rows = [np.ones(n_assets)]
+    if zero_active_beta:
+        constraints.append(h @ (beta / np.linalg.norm(beta)) == 0)
+        mandate_rows.append(beta)
     for k, cap in (factor_bounds or {}).items():
         constraints.append(cp.abs(y[k]) <= cap)
 
+    kept = _independent(mandate_rows, [B[:, k] for k in neutral_factors])
+    neutral = {k: y[k] == 0 for k, keep in zip(neutral_factors, kept) if keep}
+    constraints.extend(neutral.values())
+
+    shadow = np.full(n_factors, np.nan)
     problem = cp.Problem(objective, constraints)
     try:
         problem.solve(solver="CLARABEL")
     except cp.SolverError:
-        return np.zeros(n_assets), "solver_error"
+        return np.zeros(n_assets), "solver_error", shadow
 
     if problem.status not in _OK_STATUSES or h.value is None:
-        return np.zeros(n_assets), problem.status
-    return np.asarray(h.value, dtype=float), problem.status
+        return np.zeros(n_assets), problem.status, shadow
+    for k, constraint in neutral.items():
+        shadow[k] = float(constraint.dual_value) * alpha_norm
+    return np.asarray(h.value, dtype=float), problem.status, shadow
 
 
-def _result(ids, h, status, solve_time, alphas, B, F, delta, b, beta, target_active_risk) -> MandateResult:
+def _independent(base: list[np.ndarray], candidates: list[np.ndarray], tol: float = 1e-8) -> list[bool]:
+    """
+    For each candidate constraint row, whether it adds a new direction to
+    the span of ``base`` and the candidates kept before it (Gram-Schmidt).
+    Redundant equality rows make the solver's KKT system singular.
+    """
+    basis: list[np.ndarray] = []
+
+    def add(v: np.ndarray) -> bool:
+        r = v.astype(float)
+        for _ in range(2):  # re-orthogonalize for stability
+            for q in basis:
+                r = r - (q @ r) * q
+        if np.linalg.norm(r) <= tol * max(np.linalg.norm(v), 1.0):
+            return False
+        basis.append(r / np.linalg.norm(r))
+        return True
+
+    for v in base:
+        add(v)
+    return [add(v) for v in candidates]
+
+
+def _result(ids, h, status, solve_time, alphas, B, F, delta, b, beta, target_active_risk, shadow) -> MandateResult:
     te = float(np.sqrt(max(active_variance(h, B, F, delta), 0.0)))
     at_bound = (b > 0) & (b + h <= 1e-8)
     return MandateResult(
@@ -354,4 +404,5 @@ def _result(ids, h, status, solve_time, alphas, B, F, delta, b, beta, target_act
         expected_active_return=float(alphas @ h),
         n_at_long_only_bound=int(at_bound.sum()),
         active_factor_exposures=B.T @ h,
+        factor_shadow_prices=shadow,
     )

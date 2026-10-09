@@ -153,3 +153,62 @@ def test_rejects_bad_inputs():
         solve(alphas, B, F, -delta, b)
     with pytest.raises(ValueError):
         solve(alphas, B, F, delta, b, target=0.0)
+
+
+def make_barra_like(n=120, n_ind=4, n_style=3, seed=5):
+    """Country column of ones plus 0/1 industries (which sum to the country column) and styles."""
+    rng = np.random.default_rng(seed)
+    B = np.zeros((n, 1 + n_ind + n_style))
+    B[:, 0] = 1.0
+    B[np.arange(n), 1 + rng.integers(0, n_ind, n)] = 1.0
+    B[:, 1 + n_ind :] = rng.normal(0, 1, (n, n_style))
+    F = np.diag([0.16**2] + [0.05**2] * n_ind + [0.04**2] * n_style)
+    delta = rng.uniform(0.2, 0.45, n) ** 2
+    b = np.full(n, 1 / n)
+    alphas = 0.05 * np.sqrt(delta) * rng.normal(0, 1, n)
+    return alphas, B, F, delta, b
+
+
+def test_neutral_factors_are_exactly_zero():
+    alphas, B, F, delta, b = make_barra_like()
+    alphas = alphas + 0.02 * B[:, 5]  # alpha that wants style exposure
+    result = solve(alphas, B, F, delta, b, neutral_factors=[5, 6])
+    assert result.ok
+    np.testing.assert_allclose(result.active_factor_exposures[[5, 6]], 0, atol=1e-8)
+    assert result.ex_ante_te == pytest.approx(0.05, rel=1e-5)
+
+
+def test_full_neutrality_with_collinear_country_and_industries():
+    # Country = iota = sum of industries: three redundant constraint rows.
+    alphas, B, F, delta, b = make_barra_like()
+    result = solve(alphas, B, F, delta, b, neutral_factors=list(range(B.shape[1])))
+    assert result.ok
+    np.testing.assert_allclose(result.active_factor_exposures, 0, atol=1e-7)
+    # The country row duplicates sum(h) = 0, so it has no shadow price of its own.
+    assert np.isnan(result.factor_shadow_prices[0])
+    assert np.isfinite(result.factor_shadow_prices[5:]).all()
+
+
+def test_shadow_price_matches_relaxing_the_constraint():
+    alphas, B, F, delta, b = make_barra_like()
+    alphas = alphas + 0.02 * B[:, 5]
+    neutral = solve(alphas, B, F, delta, b, neutral_factors=[5])
+    price = neutral.factor_shadow_prices[5]
+    assert price > 0  # the alpha wants positive exposure to factor 5
+
+    eps = 1e-3
+    relaxed = solve(alphas, B, F, delta, b, factor_bounds={5: eps})
+    gain = relaxed.expected_active_return - neutral.expected_active_return
+    assert gain == pytest.approx(price * eps, rel=0.05)
+    assert np.isnan(neutral.factor_shadow_prices[6])  # not held neutral
+
+
+def test_alpha_linear_in_beta_is_worthless_under_the_mandate():
+    # Betting against beta: alpha = c(1 - beta). Sum(h) = 0 and beta'h = 0 make h'alpha = 0.
+    _, B, F, delta, b = make_barra_like()
+    alphas = 0.03 * (1 - benchmark_betas(B, F, delta, b))
+    mandate = solve(alphas, B, F, delta, b)
+    relaxed = solve(alphas, B, F, delta, b, zero_active_beta=False)
+    assert abs(mandate.expected_active_return) < 1e-8
+    assert relaxed.expected_active_return > 1e-4  # positive once beta may move
+    assert relaxed.active_beta < -0.01
