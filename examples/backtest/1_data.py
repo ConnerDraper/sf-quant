@@ -1,50 +1,22 @@
-"""Build a momentum alpha panel: date, barrid, alpha.
+"""Build an idiosyncratic momentum alpha panel with the sf-quant signal library.
 
-Grinold-Kahn alpha = IC * specific risk * z-score (manual 4.6). The
-backtester loads the benchmark, risk model, and betas itself, so the panel
-carries alphas only. A production alpha builder should also residualize the
-score against Barra exposures before standardizing (handoff, "Math spec").
+The score is residualized against every Barra factor, and alpha =
+IC * specific risk * Z (annualized). factor_loss shows what removing each
+factor gave up.
 """
 
 import datetime as dt
 
-import polars as pl
-import sf_quant.data as sfd
+import sf_quant.signals as sg
+from sf_quant.data import SfQuantMarketData
 
-start = dt.date(2000, 1, 1)
-end = dt.date(2024, 12, 31)
-signal_name = "momentum"
-price_filter = 5
-IC = 0.05
+start, end = dt.date(2010, 1, 1), dt.date(2024, 12, 31)
+data = SfQuantMarketData()
+signal = sg.IdiosyncraticMomentum()
 
-data = sfd.load_assets(
-    start=start,
-    end=end,
-    columns=["date", "barrid", "price", "return", "specific_risk"],
-    in_universe=True,
-).with_columns(pl.col("return", "specific_risk").truediv(100))
+panel = sg.build_alpha(signal, data, start, end, rebalance="monthly")
+panel.alphas.write_parquet("momentum_alphas.parquet")
 
-alphas = (
-    data.sort("barrid", "date")
-    .with_columns(
-        pl.col("return").log1p().rolling_sum(230).shift(21).over("barrid").alias(signal_name),
-        pl.col("price").shift(1).over("barrid").alias("prev_price"),
-    )
-    .filter(
-        pl.col("prev_price").gt(price_filter),
-        pl.col(signal_name).is_not_null(),
-        pl.col("specific_risk").is_not_null(),
-    )
-    .with_columns(
-        pl.col(signal_name)
-        .sub(pl.col(signal_name).mean())
-        .truediv(pl.col(signal_name).std())
-        .over("date")
-        .alias("score")
-    )
-    .select("date", "barrid", (IC * pl.col("specific_risk") * pl.col("score")).alias("alpha"))
-    .sort("date", "barrid")
-)
-
-alphas.write_parquet(f"{signal_name}_alphas.parquet")
-print(alphas)
+loss = sg.factor_loss(signal, data, start, end)
+print(loss.table)
+print(f"IC raw {loss.raw_ic:.3f}, residual {loss.residual_ic:.3f}")

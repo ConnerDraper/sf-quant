@@ -39,11 +39,13 @@ See [config.example.yml](config.example.yml) for every option and [example/](exa
 | Module | Role |
 |---|---|
 | `config.py` | `BacktestConfig`: one flat dataclass, loaded from YAML and validated |
-| `data.py` | `MarketData` protocol and `SfQuantMarketData` (the BYU data store) |
-| `backtest.py` | `run_backtest`: schedule, invariant checks, one mandate solve per formation date |
+| `backtest.py` | `run_backtest`: schedule, factor policy, invariant checks, one mandate solve per formation date |
 | `accounting.py` | Daily returns with drift, turnover, costs, and the factor/specific split |
 | `results.py` | `BacktestResult`, summary metrics, and `save()` |
+| `compare.py` | `compare`: should a candidate signal join the current composite? |
 | `cli.py` | `run` and `submit` |
+
+Market data (`MarketData`, `SfQuantMarketData`) and the signal library (`sf_quant.signals`) live in sf-quant.
 
 ## Input
 
@@ -54,6 +56,31 @@ See [config.example.yml](config.example.yml) for every option and [example/](exa
 | `alpha` | Expected residual return, annualized decimal (for example IC × specific risk × z) |
 
 Universe members without an alpha get α = 0, so they can still be underweighted. Only alphas on rebalance formation dates are used.
+
+You can pass a plain DataFrame or an `AlphaPanel` from `sf_quant.signals` (`build_alpha` or `build_composite`). A panel also carries the Barra factors its signals may keep and their constraints; a plain DataFrame keeps none.
+
+## Factor control
+
+With `factor_control: neutral` (the default), the portfolio is held at exactly zero exposure to every Barra factor no signal is allowed to keep. Allowed factors are free but capped by, in order of strictness:
+- the signals' `Constraints.factor_caps`
+- `factor_bounds` from the config
+- `default_factor_cap`
+
+`risk_model` drops exact neutrality and lets the risk model discourage factor bets on its own; it exists for the handoff's factor-control experiment.
+
+A signal can relax zero active beta (`BettingAgainstBeta` does), but only under `profile: experimental`. Under `profile: mandate` the relaxation is ignored with a warning and recorded in `summary.metadata.ignored_relaxations`.
+
+## Comparing a candidate signal
+
+```python
+from sf_backtester.compare import compare
+from sf_quant.signals import IdiosyncraticMomentum, ShortTermReversal
+
+c = compare(baseline=[IdiosyncraticMomentum()], candidate=ShortTermReversal(), config=cfg)
+c.summary              # IR for baseline, baseline + candidate, candidate alone
+c.ir_gain              # the answer: how much the candidate improves the fund's IR
+c.factor_loss.table    # what orthogonalizing the candidate against each factor gave up
+```
 
 ## Timing
 
@@ -72,8 +99,9 @@ At our size, the real implementability limit is small positions. `diagnostics` c
 | `weights.parquet` | Per rebalance and asset: alpha, benchmark, active, and fund weights |
 | `returns.parquet` | Daily portfolio, benchmark, and active returns; active split into factor and specific parts; `net_active_<bps>bps` |
 | `diagnostics.parquet` | Per rebalance: solver status, ex-ante TE, TE shortfall, active beta, transfer coefficient, long-only bound count, turnover, coverage, small-position counts |
-| `factor_exposures.parquet` | Active factor exposure per rebalance (long format) |
-| `summary.json` | Realized IR gross and net, TE, breakeven bps, realized/ex-ante TE, factor share of active variance, failures, and reproducibility metadata |
+| `factor_exposures.parquet` | Per rebalance and factor: active exposure and shadow price (the expected return a neutrality constraint cost) |
+| `factor_returns.parquet` | Each factor's daily contribution to active return |
+| `summary.json` | Realized IR gross and net, TE, breakeven bps, realized/ex-ante TE, factor share of active variance, per-factor contributions and shadow prices, failures, and reproducibility metadata |
 | `config.resolved.yml` | Config with every default filled in |
 
 ## Invariants
@@ -83,7 +111,7 @@ A run raises instead of producing numbers if any of these fails:
 - duplicate (date, barrid) rows, or null or non-finite alphas
 - alpha coverage below `min_alpha_coverage`
 - √(bᵀVb) outside [0.08, 0.40] (the Barra units check)
-- a solution that breaks Σh = 0, βᵀh = 0, w ≥ 0, or the TE limit
+- a solution that breaks Σh = 0, βᵀh = 0 (unless relaxed under `experimental`), w ≥ 0, or the TE limit
 
 Names missing Barra risk data are held at benchmark weight and counted in `n_missing_risk`. Runs stop before `holdout_start` unless `unlock_holdout: true`.
 
@@ -94,7 +122,7 @@ uv sync          # uses the sibling ../sf-quant checkout (tool.uv.sources)
 uv run pytest
 ```
 
-The tests run on synthetic Barra-shaped data (`tests/synthetic.py`), so they don't need the BYU data store. They include the handoff's canaries: perfect foresight, same-day leak, and random alpha.
+The tests run on synthetic Barra-shaped data (`sf_quant.testing`), so they don't need the BYU data store. They include the handoff's canaries: perfect foresight, same-day leak, and random alpha.
 
 ## Publishing
 
