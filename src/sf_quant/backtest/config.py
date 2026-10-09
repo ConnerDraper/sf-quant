@@ -42,6 +42,10 @@ class BacktestConfig:
     profile: str = "mandate"  # mandate | experimental
     active_risk_target: float = MANDATE_ACTIVE_RISK  # locked under profile: mandate
     factor_bounds: dict[str, float] = field(default_factory=dict)  # e.g. {USSLOWL_SIZE: 0.10}
+    # neutral: exactly zero exposure to every factor the signals aren't allowed to keep.
+    # risk_model: no exact neutrality; the risk model alone discourages factor bets.
+    factor_control: str = "neutral"
+    default_factor_cap: float | None = None  # cap for allowed factors with no signal cap
     on_failure: str = "hold_previous"  # hold_previous | raise
     bps_grid: list[float] = field(default_factory=lambda: [0.0, 5.0, 10.0, 20.0])
     holdout_start: dt.date | None = dt.date(2025, 1, 1)
@@ -65,6 +69,8 @@ class BacktestConfig:
             ),
             (self.active_risk_target > 0, "active_risk_target must be positive"),
             (all(cap > 0 for cap in self.factor_bounds.values()), "factor_bounds caps must be positive"),
+            (self.factor_control in ("neutral", "risk_model"), "factor_control must be neutral or risk_model"),
+            (self.default_factor_cap is None or self.default_factor_cap > 0, "default_factor_cap must be positive"),
             (self.on_failure in ("hold_previous", "raise"), "on_failure must be hold_previous or raise"),
             (all(bps >= 0 for bps in self.bps_grid), "bps_grid values must be non-negative"),
             (0 <= self.min_alpha_coverage <= 1, "min_alpha_coverage must be in [0, 1]"),

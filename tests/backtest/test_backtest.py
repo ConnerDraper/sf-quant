@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 import pytest
 from conftest import config, random_alphas, run
-from synthetic import business_days, synthetic_market
+from sf_quant.testing import business_days, synthetic_market
 
 from sf_backtester import BacktestConfig, InvariantError, backtest
 from sf_backtester.backtest import Rebalance, schedule
@@ -133,12 +133,13 @@ def test_parallel_and_serial_give_identical_results(market, alphas):
     assert serial.returns.equals(parallel.returns)
 
 
-def test_save_writes_the_six_handoff_files(market, alphas, tmp_path):
+def test_save_writes_every_output_file(market, alphas, tmp_path):
     out = run(market, alphas).save(tmp_path / "run")
     assert sorted(p.name for p in out.iterdir()) == [
         "config.resolved.yml",
         "diagnostics.parquet",
         "factor_exposures.parquet",
+        "factor_returns.parquet",
         "returns.parquet",
         "summary.json",
         "weights.parquet",

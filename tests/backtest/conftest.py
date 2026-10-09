@@ -7,7 +7,7 @@ import datetime as dt
 import numpy as np
 import polars as pl
 import pytest
-from synthetic import PanelMarketData, synthetic_market
+from sf_quant.testing import PanelMarketData, synthetic_market
 
 from sf_backtester import BacktestConfig, run_backtest
 

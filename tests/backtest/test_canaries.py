@@ -8,7 +8,7 @@ Ten years of synthetic data keeps the IR standard error near
 import polars as pl
 import pytest
 from conftest import random_alphas, run
-from synthetic import synthetic_market
+from sf_quant.testing import synthetic_market
 
 from sf_backtester.backtest import schedule
 
@@ -28,7 +28,7 @@ def test_perfect_foresight_is_absurd(long_market):
     for k, r in enumerate(rebalances):
         end = rebalances[k + 1].execution if k + 1 < len(rebalances) else days[-1]
         windows.append(
-            md.specific_returns.filter(pl.col("date") > r.execution, pl.col("date") <= end)
+            md.specific.filter(pl.col("date") > r.execution, pl.col("date") <= end)
             .group_by("barrid")
             .agg(pl.col("specific_return").sum().alias("alpha"))
             .with_columns(pl.lit(r.formation).alias("date"))
@@ -40,7 +40,7 @@ def test_perfect_foresight_is_absurd(long_market):
 
 def test_same_day_leak_is_nothing_special(long_market):
     """Alpha equal to the formation day's own return is stale by execution. A great IR means look-ahead."""
-    alphas = long_market.specific_returns.rename({"specific_return": "alpha"})
+    alphas = long_market.specific.rename({"specific_return": "alpha"})
     assert abs(run(long_market, alphas).summary["ir_gross"]) < 1.0
 
 

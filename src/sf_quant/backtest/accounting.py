@@ -13,8 +13,7 @@ import datetime as dt
 
 import numpy as np
 import polars as pl
-
-from sf_backtester.data import MarketData
+from sf_quant.data import MarketData
 
 
 def net_column(bps: float) -> str:
@@ -27,7 +26,7 @@ def account(
     benchmark: pl.DataFrame,
     md: MarketData,
     bps_grid: list[float],
-) -> tuple[pl.DataFrame, pl.DataFrame, int]:
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, int]:
     """
     Account for the executed rebalances in ``periods`` (successful solves,
     in execution order).
@@ -39,6 +38,9 @@ def account(
         ``active_specific``, and ``net_active_<bps>bps`` columns.
     turnover : pl.DataFrame
         ``execution_date``, ``turnover`` (sum |w_target - w_drifted|), ``initial``.
+    factor_returns : pl.DataFrame
+        ``date``, ``factor``, ``contribution``: each factor's part of the
+        daily active return (they sum to ``active_factor``).
     n_missing : int
         Held name-days without a return (the position is frozen that day).
     """
@@ -52,7 +54,7 @@ def account(
     factor_returns = md.factor_returns(first, days[-1])
 
     position = {day: i for i, day in enumerate(days)}
-    rows, turnover_rows, n_missing, drifted = [], [], 0, None
+    rows, turnover_rows, factor_rows, n_missing, drifted = [], [], [], 0, None
 
     for k, period in enumerate(periods):
         execution = period.rebalance.execution
@@ -89,7 +91,9 @@ def account(
             w = value / value.sum()
             n_missing += int(((w > 0) & ~present[j]).sum())
             portfolio, bench_return = w @ R[j], W_bench[j] @ R[j]
-            active_factor = (exposures.T @ (w - W_bench[j])) @ F_returns[j]
+            contributions = (exposures.T @ (w - W_bench[j])) * F_returns[j]
+            factor_rows.append((day, period.factor_names, contributions))
+            active_factor = contributions.sum()
             rows.append(
                 {
                     "date": day,
@@ -116,7 +120,14 @@ def account(
         .with_columns((pl.col("active") - bps / 1e4 * pl.col("_traded")).alias(net_column(bps)) for bps in bps_grid)
         .drop("_traded")
     )
-    return daily, turnover, n_missing
+    factor_daily = pl.DataFrame(
+        {
+            "date": [d for d, names, _ in factor_rows for _ in names],
+            "factor": [n for _, names, _ in factor_rows for n in names],
+            "contribution": np.concatenate([c for _, _, c in factor_rows]),
+        }
+    )
+    return daily, turnover, factor_daily, n_missing
 
 
 def _turnover(drifted: dict[str, float] | None, target: dict[str, float]) -> float:

@@ -25,7 +25,8 @@ class BacktestResult:
     weights: pl.DataFrame  # per rebalance and asset: alpha, benchmark, active, and fund weight
     returns: pl.DataFrame  # daily portfolio, benchmark, active (factor/specific), net of each cost level
     diagnostics: pl.DataFrame  # per rebalance: solver status, ex-ante TE, TC, turnover, ...
-    factor_exposures: pl.DataFrame  # formation_date, factor, active_exposure
+    factor_exposures: pl.DataFrame  # formation_date, factor, active_exposure, shadow_price
+    factor_returns: pl.DataFrame  # date, factor, contribution to daily active return
     summary: dict  # headline metrics plus reproducibility metadata
     config: dict  # resolved config
 
@@ -36,6 +37,7 @@ class BacktestResult:
         self.returns.write_parquet(out / "returns.parquet")
         self.diagnostics.write_parquet(out / "diagnostics.parquet")
         self.factor_exposures.write_parquet(out / "factor_exposures.parquet")
+        self.factor_returns.write_parquet(out / "factor_returns.parquet")
         (out / "summary.json").write_text(json.dumps(_finite(self.summary), indent=2))
         (out / "config.resolved.yml").write_text(yaml.safe_dump(self.config, sort_keys=False))
         return out
@@ -45,21 +47,38 @@ def build_result(
     solved: list,
     returns: pl.DataFrame,
     turnover: pl.DataFrame,
+    factor_returns: pl.DataFrame,
     n_missing: int,
     config: BacktestConfig,
     data_snapshot: dt.date,
     holdout_used: bool,
+    panel,
+    ignored_relaxations: list[str],
 ) -> BacktestResult:
     diagnostics = (
         pl.DataFrame([s.diagnostics for s in solved])
         .join(turnover, on="execution_date", how="left")
         .with_columns(pl.col("turnover").fill_null(0.0), pl.col("initial").fill_null(False))
     )
+    factor_exposures = pl.concat(
+        pl.DataFrame(
+            {
+                "formation_date": [s.rebalance.formation] * len(s.factor_names),
+                "factor": s.factor_names,
+                "active_exposure": s.active_factor_exposures,
+                "shadow_price": s.factor_shadow_prices,
+            }
+        )
+        for s in solved
+    )
     summary = summarize(returns, diagnostics, config) | {
         "n_missing_return_days": n_missing,
+        "factors": _factor_summary(factor_returns, factor_exposures, len(returns)),
         "metadata": {
             "config_hash": config.hash(),
             "profile": config.profile,
+            "allowed_factors": sorted(panel.allowed_factors),
+            "ignored_relaxations": ignored_relaxations,
             "holdout_used": holdout_used,
             "data_snapshot": data_snapshot.isoformat(),
             "git_sha": _git_sha(),
@@ -78,16 +97,8 @@ def build_result(
         ),
         returns=returns,
         diagnostics=diagnostics,
-        factor_exposures=pl.concat(
-            pl.DataFrame(
-                {
-                    "formation_date": [s.rebalance.formation] * len(s.factor_names),
-                    "factor": s.factor_names,
-                    "active_exposure": s.active_factor_exposures,
-                }
-            )
-            for s in solved
-        ),
+        factor_exposures=factor_exposures,
+        factor_returns=factor_returns,
         summary=summary,
         config=config.resolved(),
     )
@@ -126,6 +137,26 @@ def summarize(returns: pl.DataFrame, diagnostics: pl.DataFrame, config: Backtest
         "n_rebalances": diagnostics.height,
         "failed_rebalances": diagnostics.height - ok.height,
     }
+
+
+def _factor_summary(factor_returns: pl.DataFrame, factor_exposures: pl.DataFrame, n_days: int) -> dict:
+    """
+    Per factor: annualized realized contribution to active return, mean
+    active exposure, and mean shadow price (the expected return its
+    neutrality constraint cost; null when not held neutral). Largest
+    contributions first.
+    """
+    realized = factor_returns.group_by("factor").agg(
+        (pl.col("contribution").sum() * TRADING_DAYS / n_days).alias("annual_contribution")
+    )
+    planned = factor_exposures.group_by("factor").agg(
+        pl.col("active_exposure").mean().alias("mean_exposure"),
+        pl.col("shadow_price").fill_nan(None).mean().alias("mean_shadow_price"),
+    )
+    table = realized.join(planned, on="factor", how="full", coalesce=True).sort(
+        pl.col("annual_contribution").abs(), descending=True, nulls_last=True
+    )
+    return {row.pop("factor"): row for row in table.iter_rows(named=True)}
 
 
 def _ir(daily: np.ndarray) -> float:

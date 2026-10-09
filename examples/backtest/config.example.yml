@@ -9,7 +9,9 @@ execution_lag_days: 1         # alpha formed at close t, traded at close t+1
 
 profile: mandate              # mandate | experimental
 active_risk_target: 0.05      # annualized; locked under profile: mandate
+factor_control: neutral       # neutral (zero exposure to factors no signal may keep) | risk_model
 factor_bounds: {}             # optional caps on |active exposure|, e.g. {USSLOWL_SIZE: 0.10}
+default_factor_cap: null      # cap for factors a signal may keep but gives no cap for
 on_failure: hold_previous     # hold_previous | raise
 
 bps_grid: [0, 5, 10, 20]      # costs charged on realized turnover
