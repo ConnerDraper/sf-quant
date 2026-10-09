@@ -116,18 +116,21 @@ def benchmark():
 
 
 def benchmark_returns():
+    # The return on date t is earned by the weight set at the close of t-1.
+    # Cap weights at close t already include return t, so pairing them with
+    # the same day's return overweights that day's winners.
     return (
-        assets_table.scan()
-        .filter(pl.col('in_universe'))
-        .select(
-            "date",
-            "barrid",
-            pl.col("market_cap")
-            .truediv(pl.col("market_cap").sum())
-            .over("date")
-            .alias("weight"),
-            "return",
+        benchmark()
+        .sort("barrid", "date")
+        .with_columns(pl.col("weight").shift(1).over("barrid"))
+        .join(
+            assets_table.scan()
+            .filter(pl.col("in_universe"))
+            .select("date", "barrid", "return"),
+            on=["date", "barrid"],
+            how="inner",
         )
+        .drop_nulls("weight")
     )
 
 

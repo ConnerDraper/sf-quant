@@ -1,3 +1,5 @@
+import datetime as dt
+
 import polars as pl
 from sf_quant.data.assets import load_assets
 from sf_quant.data.benchmark import load_benchmark
@@ -40,6 +42,8 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     -----
     - Asset returns are sourced via ``load_assets``.
     - Benchmark weights are sourced via ``load_benchmark``.
+    - Weights dated t (set at the close of t) earn the next trading day's
+      return. Each output row is labeled with the weight date t.
     - Returns are computed as the weighted sum of returns by portfolio.
 
     Examples
@@ -73,20 +77,13 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     start = weights["date"].min()
     end = weights["date"].max()
 
-    columns = ["date", "barrid", "return"]
-
-    returns = load_assets(start=start, end=end, in_universe=True, columns=columns)
+    returns = _forward_returns(start, end)
 
     benchmark = load_benchmark(start=start, end=end)
-
-    returns = returns.sort("barrid", "date")
 
     joined = (
         weights.join(returns, on=["date", "barrid"], how="left")
         .join(benchmark, on=["date", "barrid"], how="left", suffix="_bmk")
-        .with_columns(
-            pl.col("return").truediv(100),
-        )
         .with_columns(pl.col("weight").sub("weight_bmk").alias("weight_act"))
         .rename({"weight": "total", "weight_bmk": "benchmark", "weight_act": "active"})
         .unpivot(
@@ -138,6 +135,8 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
     -----
     - Asset returns are sourced via ``load_assets``.
     - Returns are computed as the weighted sum of returns by portfolio.
+    - Weights dated t (set at the close of t) earn the next trading day's
+      return. Each output row is labeled with the weight date t.
 
     Examples
     --------
@@ -166,18 +165,9 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
     start = weights["date"].min()
     end = weights["date"].max()
 
-    columns = ["date", "barrid", "return"]
+    returns = _forward_returns(start, end)
 
-    returns = load_assets(start=start, end=end, in_universe=True, columns=columns)
-
-    returns = returns.sort("barrid", "date")
-
-    joined = (
-        weights.join(returns, on=["date", "barrid"], how="left")
-        .with_columns(
-            pl.col("return").truediv(100),
-        )
-    )
+    joined = weights.join(returns, on=["date", "barrid"], how="left")
 
     result = (
         joined.group_by("date")
@@ -187,3 +177,22 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
         .sort("date")
     )
     return PortfolioRetSchema.validate(result)
+
+def _forward_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
+    """
+    Load decimal returns keyed so that row (t, barrid) holds the return
+    earned from the close of t to the close of the next trading day.
+
+    Loads a few days past ``end`` so the last weight date has a return.
+    """
+    return (
+        load_assets(
+            start=start,
+            end=end + dt.timedelta(days=10),
+            in_universe=False,
+            columns=["date", "barrid", "return"],
+        )
+        .sort("barrid", "date")
+        .with_columns(pl.col("return").truediv(100).shift(-1).over("barrid"))
+        .filter(pl.col("date").is_between(start, end))
+    )
