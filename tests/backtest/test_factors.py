@@ -1,4 +1,4 @@
-"""Factor control, per-factor attribution, and signal constraints."""
+"""Factor control, per-factor attribution, signal constraints, and candidate comparison."""
 
 from dataclasses import dataclass
 
@@ -10,6 +10,7 @@ from conftest import config, random_alphas, run
 from sf_quant.testing import INDUSTRIES, synthetic_market
 
 from sf_backtester import run_backtest
+from sf_backtester.compare import compare
 
 
 @dataclass(frozen=True)
@@ -72,3 +73,14 @@ def test_beta_relaxation_needs_the_experimental_profile(planted_market):
     assert experimental.diagnostics["active_beta"].mean() < -0.01
     assert experimental.diagnostics["expected_active_return"].mean() > mandate.diagnostics["expected_active_return"].mean()
 
+
+def test_compare_rewards_new_information_not_duplicates(planted_market):
+    md = planted_market
+    cfg = after_warmup(md)
+    adds = compare([sg.ShortTermReversal()], Planted(), cfg, md, ic_shrink_obs=6)
+    assert adds.ir_gain > 0.2
+    assert set(adds.summary["run"]) == {"baseline", "with_candidate", "candidate"}
+    assert adds.candidate_in_composite["marginal_ic"][-1] > 0
+
+    duplicate = compare([Planted()], Planted(), cfg, md, ic_shrink_obs=6)
+    assert abs(duplicate.ir_gain) < 0.05
