@@ -1,237 +1,107 @@
-"""Configuration management for sf-backtester."""
+"""Backtest configuration, loaded from a flat YAML file.
+
+Under ``profile: mandate`` the tracking-error target is locked to the Silver
+Fund mandate, so a research variant can't pass as a backtest of the fund.
+Long-only, full investment, and zero active beta are always enforced.
+"""
 
 from __future__ import annotations
 
+import dataclasses
+import datetime as dt
+import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import yaml
 
+MANDATE_ACTIVE_RISK = 0.05
 
-@dataclass
+
+class ConfigError(ValueError):
+    """A config is malformed or uses an unsupported option."""
+
+
+@dataclass(frozen=True)
 class SlurmConfig:
-    """SLURM job configuration."""
-
     n_cpus: int = 8
     mem: str = "32G"
     time: str = "06:00:00"
-    mail_type: str = "BEGIN,END,FAIL"
-    max_concurrent_jobs: int = 31
+    email: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class BacktestConfig:
-    """Configuration for a backtest run."""
-
-    # Required fields
-    signal_name: str
-    data_path: str
-    gamma: float
-
-    # Environment/paths
-    project_root: str
-    byu_email: str
-
-    # Optional with defaults
-    constraints: list[str]
-    slurm: SlurmConfig
-
-    # Output configuration
-    output_dir: str | None = None
-    logs_dir: str | None = None
+    name: str
+    start: dt.date
+    end: dt.date
+    rebalance: str = "monthly"  # monthly | weekly | daily
+    execution_lag_days: int = 1  # alpha formed at close t, traded at close t + lag
+    profile: str = "mandate"  # mandate | experimental
+    active_risk_target: float = MANDATE_ACTIVE_RISK  # locked under profile: mandate
+    factor_bounds: dict[str, float] = field(default_factory=dict)  # e.g. {USSLOWL_SIZE: 0.10}
+    on_failure: str = "hold_previous"  # hold_previous | raise
+    bps_grid: list[float] = field(default_factory=lambda: [0.0, 5.0, 10.0, 20.0])
+    holdout_start: dt.date | None = dt.date(2025, 1, 1)
+    unlock_holdout: bool = False
+    min_alpha_coverage: float = 0.5
+    pass_ir: float = 0.0  # breakeven cost is where net IR falls to this
+    aum: float = 1_000_000.0
+    min_position_dollars: float = 100.0
+    n_workers: int = 1
+    slurm: SlurmConfig = field(default_factory=SlurmConfig)
 
     def __post_init__(self) -> None:
-        """Set derived paths if not provided."""
-        if self.output_dir is None:
-            self.output_dir = f"{self.project_root}/weights/{self.signal_name}/{self.gamma}"
-        if self.logs_dir is None:
-            self.logs_dir = f"logs/{self.signal_name}/{self.gamma}"
+        checks = [
+            (self.end >= self.start, "end must be on or after start"),
+            (self.rebalance in ("monthly", "weekly", "daily"), "rebalance must be monthly, weekly, or daily"),
+            (self.execution_lag_days >= 0, "execution_lag_days must be non-negative"),
+            (self.profile in ("mandate", "experimental"), "profile must be mandate or experimental"),
+            (
+                self.profile != "mandate" or self.active_risk_target == MANDATE_ACTIVE_RISK,
+                f"active_risk_target is locked to {MANDATE_ACTIVE_RISK} under profile: mandate",
+            ),
+            (self.active_risk_target > 0, "active_risk_target must be positive"),
+            (all(cap > 0 for cap in self.factor_bounds.values()), "factor_bounds caps must be positive"),
+            (self.on_failure in ("hold_previous", "raise"), "on_failure must be hold_previous or raise"),
+            (all(bps >= 0 for bps in self.bps_grid), "bps_grid values must be non-negative"),
+            (0 <= self.min_alpha_coverage <= 1, "min_alpha_coverage must be in [0, 1]"),
+            (self.n_workers >= 1, "n_workers must be at least 1"),
+        ]
+        for ok, message in checks:
+            if not ok:
+                raise ConfigError(message + ".")
 
-        # Convert slurm dict to SlurmConfig if needed
-        if isinstance(self.slurm, dict):
-            self.slurm = SlurmConfig(**self.slurm)
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        data = dict(data)
+        for key in ("start", "end", "holdout_start"):
+            if isinstance(data.get(key), str):
+                data[key] = dt.date.fromisoformat(data[key])
+        if "bps_grid" in data:
+            data["bps_grid"] = [float(bps) for bps in data["bps_grid"]]
+        try:
+            if isinstance(data.get("slurm"), dict):
+                data["slurm"] = SlurmConfig(**data["slurm"])
+            return cls(**data)
+        except TypeError as e:  # unknown or missing keys
+            raise ConfigError(str(e)) from None
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Self:
-        """Load configuration from a YAML file."""
         with open(path) as f:
-            data = yaml.safe_load(f)
-        return cls(**data)
+            return cls.from_dict(yaml.safe_load(f) or {})
 
-    def to_yaml(self, path: str | Path) -> None:
-        """Save configuration to a YAML file."""
-        data = {
-            "signal_name": self.signal_name,
-            "data_path": self.data_path,
-            "gamma": self.gamma,
-            "project_root": self.project_root,
-            "byu_email": self.byu_email,
-            "constraints": self.constraints,
-            "slurm": {
-                "n_cpus": self.slurm.n_cpus,
-                "mem": self.slurm.mem,
-                "time": self.slurm.time,
-                "mail_type": self.slurm.mail_type,
-                "max_concurrent_jobs": self.slurm.max_concurrent_jobs,
-            },
-            "output_dir": self.output_dir,
-            "logs_dir": self.logs_dir,
+    def resolved(self) -> dict[str, Any]:
+        """Every field, defaults included, as YAML-safe types."""
+        return {
+            k: v.isoformat() if isinstance(v, dt.date) else v
+            for k, v in dataclasses.asdict(self).items()
         }
-        with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
-
-@dataclass
-class BacktestDynamicConfig:
-    """Configuration for a backtest run."""
-
-    # Required fields
-    signal_name: str
-    data_path: str
-    initial_gamma: float
-    target_active_risk: float
-    active_weights: bool
-
-    # Environment/paths
-    project_root: str
-    byu_email: str
-
-    # Optional with defaults
-    constraints: list[str]
-    slurm: SlurmConfig
-
-    # Output configuration
-    output_dir: str | None = None
-    logs_dir: str | None = None
-
-    def __post_init__(self) -> None:
-        """Set derived paths if not provided."""
-        if self.output_dir is None:
-            self.output_dir = f"{self.project_root}/weights/{self.signal_name}/{self.target_active_risk}"
-        if self.logs_dir is None:
-            self.logs_dir = f"logs/{self.signal_name}/{self.target_active_risk}"
-
-        # Convert slurm dict to SlurmConfig if needed
-        if isinstance(self.slurm, dict):
-            self.slurm = SlurmConfig(**self.slurm)
-
-    @classmethod
-    def from_yaml(cls, path: str | Path) -> Self:
-        """Load configuration from a YAML file."""
-        with open(path) as f:
-            data = yaml.safe_load(f)
-        return cls(**data)
-
-    def to_yaml(self, path: str | Path) -> None:
-        """Save configuration to a YAML file."""
-        data = {
-            "signal_name": self.signal_name,
-            "data_path": self.data_path,
-            "initial_gamma": self.initial_gamma,
-            "target_active_risk": self.target_active_risk,
-            "active_weights": self.active_weights,
-            "project_root": self.project_root,
-            "byu_email": self.byu_email,
-            "constraints": self.constraints,
-            "slurm": {
-                "n_cpus": self.slurm.n_cpus,
-                "mem": self.slurm.mem,
-                "time": self.slurm.time,
-                "mail_type": self.slurm.mail_type,
-                "max_concurrent_jobs": self.slurm.max_concurrent_jobs,
-            },
-            "output_dir": self.output_dir,
-            "logs_dir": self.logs_dir,
-        }
-        with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-
-
-@dataclass
-class CostModelConfig:
-    """Transaction cost model configuration."""
-
-    type: str = "spread"
-    target_median_bps: float = 7.5
-    fixed_bps: float = 5.0
-
-
-@dataclass
-class BacktestCostAwareConfig:
-    """Configuration for a cost-aware sequential backtest.
-
-    Unlike parallel backtests that split by year, cost-aware backtests
-    run sequentially across the full date range to maintain warm-starting
-    continuity and proper turnover cost tracking.
-    """
-
-    # Required fields
-    signal_name: str
-    data_path: str
-    gamma: float
-
-    # Environment/paths
-    project_root: str
-    byu_email: str
-
-    # Constraints
-    constraints: list[str]
-
-    # Cost model configuration
-    cost_model: CostModelConfig
-
-    # SLURM (single job, no array needed)
-    slurm: SlurmConfig
-
-    # Output configuration
-    output_dir: str | None = None
-    logs_dir: str | None = None
-
-    def __post_init__(self) -> None:
-        """Set derived paths if not provided."""
-        if self.output_dir is None:
-            self.output_dir = (
-                f"{self.project_root}/weights/{self.signal_name}/{self.gamma}_cost_aware"
-            )
-        if self.logs_dir is None:
-            self.logs_dir = f"logs/{self.signal_name}/{self.gamma}_cost_aware"
-
-        if isinstance(self.slurm, dict):
-            self.slurm = SlurmConfig(**self.slurm)
-        if isinstance(self.cost_model, dict):
-            self.cost_model = CostModelConfig(**self.cost_model)
-
-    @classmethod
-    def from_yaml(cls, path: str | Path) -> Self:
-        """Load configuration from a YAML file."""
-        with open(path) as f:
-            data = yaml.safe_load(f)
-        return cls(**data)
-
-    def to_yaml(self, path: str | Path) -> None:
-        """Save configuration to a YAML file."""
-        data = {
-            "signal_name": self.signal_name,
-            "data_path": self.data_path,
-            "gamma": self.gamma,
-            "project_root": self.project_root,
-            "byu_email": self.byu_email,
-            "constraints": self.constraints,
-            "cost_model": {
-                "type": self.cost_model.type,
-                "target_median_bps": self.cost_model.target_median_bps,
-                "fixed_bps": self.cost_model.fixed_bps,
-            },
-            "slurm": {
-                "n_cpus": self.slurm.n_cpus,
-                "mem": self.slurm.mem,
-                "time": self.slurm.time,
-                "mail_type": self.slurm.mail_type,
-                "max_concurrent_jobs": self.slurm.max_concurrent_jobs,
-            },
-            "output_dir": self.output_dir,
-            "logs_dir": self.logs_dir,
-        }
-        with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    def hash(self) -> str:
+        """Short hash of everything that affects results (not n_workers or slurm)."""
+        payload = {k: v for k, v in self.resolved().items() if k not in ("n_workers", "slurm")}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]

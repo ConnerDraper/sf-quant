@@ -1,72 +1,22 @@
-import polars as pl
-import sf_quant.data as sfd
-import datetime as dt
+"""Plot cumulative gross and net active return from a saved run."""
+
+import json
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-import seaborn as sns
+import polars as pl
 
-start = dt.date(2000, 1, 1)
-end = dt.date(2024, 12, 31)
+run_dir = "runs/momentum"
+returns = pl.read_parquet(f"{run_dir}/returns.parquet").sort("date")
+summary = json.loads(Path(f"{run_dir}/summary.json").read_text())
 
-weights = pl.read_parquet("weights/momentum/0.05/*.parquet")
-print(weights)
+for column in ["active", "net_active_10bps"]:
+    plt.plot(returns["date"], returns[column].log1p().cum_sum() * 100, label=column)
 
-returns = (
-    sfd.load_assets(
-        start=start,
-        end=end,
-        columns=['date', 'barrid', 'return'],
-        in_universe=True
-    )
-    .sort('date', 'barrid')
-    .with_columns(
-        pl.col('return')
-        .truediv(100)
-        .shift(-1)
-        .over('barrid')
-    )
-    .drop_nulls()
-    .sort('date', 'barrid')
+plt.title(
+    f"Momentum: IR {summary['ir_gross']:.2f} gross, {summary['ir_net']['10']:.2f} net of 10 bps; "
+    f"TE {summary['realized_te']:.1%}"
 )
-
-results = (
-    weights
-    .join(
-        other=returns,
-        on=['date', 'barrid'],
-        how='inner',
-    )
-    .group_by('date')
-    .agg(
-        pl.col('return')
-        .mul(pl.col('weight'))
-        .sum()
-    )
-    .sort('date')
-    .with_columns(
-        pl.col('return')
-        .log1p()
-        .cum_sum()
-        .mul(100)
-        .alias('cumulative_return')
-    )
-)
-
-table = (
-    results
-    .select(
-        pl.col('return').mean().mul(252 * 100).alias('mean'),
-        pl.col('return').std().mul(pl.lit(252).sqrt() * 100).alias('volatility')
-    )
-    .with_columns(
-        pl.col('mean').truediv(pl.col('volatility')).alias('sharpe')
-    )
-)
-
-sharpe = table['sharpe'].item()
-
-sns.lineplot(results, x='date', y='cumulative_return')
-plt.title(f"Momentum Backtest ({sharpe:.2f})")
-plt.xlabel(None)
-plt.ylabel("Cumulative Log Returns (%)")
-
-plt.savefig("results.png")
+plt.ylabel("Cumulative log active return (%)")
+plt.legend()
+plt.savefig(f"{run_dir}/active_return.png")
