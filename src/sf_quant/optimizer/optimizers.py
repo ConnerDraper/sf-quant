@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import cvxpy as cp
 import polars as pl
@@ -101,6 +103,12 @@ def mve_optimizer(
     │ IBM    ┆ 0.55   │
     └────────┴────────┘
     """
+    warnings.warn(
+        "mve_optimizer is deprecated; use mandate_optimizer, which sizes the "
+        "active portfolio to the tracking-error target without gamma.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     constraints = _construct_constraints(constraints, betas=betas)
 
     optimal_weights = _quadratic_program(
@@ -217,6 +225,12 @@ def dynamic_mve_optimizer(
     │ IBM    ┆ 0.60   ┆ 75.5  ┆ 0.05         │
     └────────┴────────┴───────┴──────────────┘
     """
+    warnings.warn(
+        "dynamic_mve_optimizer is deprecated; use mandate_optimizer, which "
+        "solves for the tracking-error target exactly instead of tuning gamma.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     constructed_constraints = _construct_constraints(constraints, betas=betas)
 
     # Build constraints for the calibration loop

@@ -113,27 +113,44 @@ Load financial data as Polars DataFrames. Use `get_*_columns()` to inspect avail
 | `load_exposures()` / `load_exposures_by_date()` | Barra factor exposures (77+ factors) |
 | `load_covariances_by_date()` | Factor covariance matrix for a date |
 | `construct_covariance_matrix()` | Build an asset-level covariance matrix from the factor model |
+| `load_risk_model()` | Barra B, F, and specific variance for one date (decimal, annualized), reporting names with missing risk data |
 | `load_benchmark()` / `load_benchmark_returns()` | Benchmark weights and returns |
 | `load_factors()` / `get_factor_names()` | Barra factor returns and metadata |
 | `load_fama_french()` | Fama-French 5-factor data |
 
 ### `sf_quant.optimizer`
 
-Mean-variance efficient (MVE) portfolio optimizer built on CVXPY.
+`mandate_optimizer` solves the Silver Fund mandate problem (manual Chapter 3)
+in active weights, with no risk-aversion parameter:
 
-```python
-import sf_quant.optimizer as sfo
-
-weights = sfo.mve_optimizer(
-    ids=barrids,
-    alphas=alphas,
-    covariance_matrix=covariance_matrix,
-    constraints=[sfo.FullInvestment(), sfo.LongOnly()],
-    gamma=2,
-)
+```
+max hᵀα  s.t.  Σh = 0,  βᵀh = 0,  hᵀVh ≤ σ̄²,  w_b + h ≥ 0
 ```
 
-**Available constraints:**
+V is the Barra factor model `B F Bᵀ + diag(δ)`, and β = Vb / (bᵀVb) comes from
+the same V (manual 3.3.2). The risk constraint sizes the active portfolio to
+the tracking-error target directly. If long-only keeps the portfolio from
+reaching the target, the gap is reported as `te_shortfall`.
+
+```python
+import sf_quant.data as sfd
+import sf_quant.optimizer as sfo
+
+rm = sfd.load_risk_model(date_, barrids)  # drops and reports names missing risk data
+result = sfo.mandate_optimizer(
+    ids=rm.ids,
+    alphas=alphas,                     # aligned to rm.ids
+    factor_exposures=rm.factor_exposures,
+    factor_covariance=rm.factor_covariance,
+    specific_variance=rm.specific_variance,
+    benchmark_weights=benchmark_weights,
+    target_active_risk=0.05,
+)
+result.active_weights, result.ex_ante_te, result.status
+```
+
+`mve_optimizer` and `dynamic_mve_optimizer` (gamma-based) and the constraint
+classes below are deprecated.
 
 | Constraint | Effect |
 |---|---|
@@ -146,7 +163,8 @@ weights = sfo.mve_optimizer(
 
 ### `sf_quant.backtester`
 
-Run walk-forward backtests that optimize at each rebalance date.
+Deprecated. Use [sf-backtester](https://github.com/ConnerDraper/sf-backtester),
+which runs `mandate_optimizer` and reports returns, costs, and diagnostics.
 
 ```python
 import sf_quant.backtester as sfb

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import polars as pl
 import tqdm
@@ -123,6 +125,12 @@ def backtest_sequential(
     │ 2024-01-08 ┆ USA06Z1 ┆ -0.000666 │
     └────────────┴─────────┴───────────┘
     """
+    warnings.warn(
+        "backtest_sequential is deprecated; use sf-backtester's Backtest, which runs the "
+        "mandate optimizer and reports returns and diagnostics.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     dates = data["date"].unique().sort().to_list()
     portfolio_list = []
     prev_weights: np.ndarray | None = None

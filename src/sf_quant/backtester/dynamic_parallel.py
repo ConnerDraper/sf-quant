@@ -1,3 +1,4 @@
+import warnings
 import polars as pl
 import os
 import ray
@@ -212,6 +213,12 @@ def dynamic_backtest_parallel(
     │ 2024-01-02 ┆ USA11I1 ┆ 0.001475  ┆ 100.0 ┆ 0.047        │
     └────────────┴─────────┴───────────┴───────┴──────────────┘
     """
+    warnings.warn(
+        "dynamic_backtest_parallel is deprecated; use sf-backtester's Backtest, which runs the "
+        "mandate optimizer and reports returns and diagnostics.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     # Get dates
     dates = data["date"].unique().sort().to_list()
 

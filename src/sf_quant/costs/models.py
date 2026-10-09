@@ -1,8 +1,14 @@
-"""Transaction cost models for portfolio optimization.
+"""Transaction cost models.
 
 Provides a protocol and concrete implementations for estimating one-way
-trading costs per unit traded. These costs are used by the optimizer to
-penalize turnover in the objective function.
+trading costs per unit traded.
+
+These models estimate spread cost, which scales with turnover and not with
+fund size. They do not model market impact. At the Silver Fund's size
+(about $1M AUM) impact is negligible, so costs belong in return accounting,
+not in the optimizer: the mandate optimizer has no cost term, and
+sf-backtester charges costs on realized turnover. Using them as an optimizer
+penalty (``mve_optimizer(costs=...)``) is deprecated.
 """
 
 from typing import Protocol

@@ -12,6 +12,12 @@ Optimizer
    :toctree: optimizer
    :nosignatures:
 
+   mandate_optimizer
+   MandateResult
+   benchmark_betas
+   equality_direction
+   active_variance
+   covariance_times
    mve_optimizer
    dynamic_mve_optimizer
    FullInvestment
