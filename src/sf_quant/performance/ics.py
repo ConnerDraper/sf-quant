@@ -9,7 +9,7 @@ def generate_alpha_ics(
     window: int = 22
     ) -> pl.DataFrame:
     """
-    Compute Information Coefficients (ICs) between previous-day alpha and realized returns.
+    Compute Information Coefficients (ICs) between alpha and the returns that follow it.
 
     This function calculates the IC for each date by aligning the alpha signal
     with the realized return at the end of the given window for each
@@ -53,8 +53,9 @@ def generate_alpha_ics(
 
     Notes
     -----
-    - The function first shifts alpha values by one day per asset to align with
-      the next day's realized return.
+    - An alpha dated t (formed at the close of t) is paired with the compounded
+      return over the next ``window`` trading days, t+1 through t+window. The
+      return on day t itself is already realized when the alpha is formed.
     - Observations with null or non-finite alpha or return values are excluded.
     - Spearman IC is computed by ranking alpha and return values within each date
       and then calculating the Pearson correlation of ranks.
@@ -94,7 +95,6 @@ def generate_alpha_ics(
     │ 2024-01-04 ┆ -1.0     ┆ 1   │
     └────────────┴──────────┴─────┘
     """
-    # Lag alpha by security
     alphas = (
         alphas
         .sort(["barrid", "date"])
@@ -108,7 +108,7 @@ def generate_alpha_ics(
         .with_columns(
             pl.col("return").log1p()
             .rolling_sum(window).over("barrid")
-            .exp().sub(1).shift(-window + 1)
+            .exp().sub(1).shift(-window)  # returns t+1 .. t+window
             .alias("window_return")
             )
     )
