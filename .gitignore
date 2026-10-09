@@ -2,6 +2,7 @@
 /.archive
 *test*.py
 !tests/test_*.py
+!src/sf_quant/testing.py
 
 # Scratch
 *scratch*.py
