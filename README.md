@@ -149,6 +149,13 @@ result = sfo.mandate_optimizer(
 result.active_weights, result.ex_ante_te, result.status
 ```
 
+Optional arguments:
+- `neutral_factors` holds factors at exactly zero active exposure. Redundant rows, like the country factor that duplicates Σh = 0, are dropped automatically.
+- `factor_bounds` caps them.
+- `zero_active_beta=False` relaxes the beta constraint, for experimental runs.
+
+`result.factor_shadow_prices` reports what each neutrality constraint costs in expected return.
+
 `mve_optimizer` and `dynamic_mve_optimizer` (gamma-based) and the constraint
 classes below are deprecated.
 
@@ -160,6 +167,33 @@ classes below are deprecated.
 | `NoBuyingOnMargin()` | Weights sum to at most 1 |
 | `UnitBeta()` | Portfolio beta equals 1 |
 | `ZeroBeta()` | Portfolio beta equals 0 |
+
+### `sf_quant.signals`
+
+Turn stock-level signals into alphas for the mandate optimizer.
+
+```python
+import sf_quant.signals as sg
+from sf_quant.data import SfQuantMarketData
+
+data = SfQuantMarketData()
+signals = [sg.IdiosyncraticMomentum(), sg.ShortTermReversal(), sg.IndustryMomentum()]
+
+panel = sg.build_composite(signals, data, start, end)        # alphas + allowed factors + constraints
+loss = sg.factor_loss(sg.IdiosyncraticMomentum(), data, start, end)
+loss.table                                                   # return given up to each Barra factor
+```
+
+- **Allowed factors.** Each `Signal` declares the Barra factors it may keep, with `NO_FACTORS` as the default. Sets compose: `ALL_FACTORS`, `STYLE_FACTORS`, `INDUSTRY_FACTORS`, `COUNTRY_FACTOR`, e.g. `STYLE_FACTORS | {"USSLOWL_BETA"}`. Scores are residualized against every other factor.
+- **IC target.** IC and σ refer to the Barra specific return plus the allowed factors' returns. With no allowed factors, this is exactly specific return and specific risk.
+- **Composite weights.** `build_composite` weights signals by v = R⁻¹·IC, using out-of-sample ICs shrunk toward zero and a shrunk signal correlation matrix R.
+- **Defaults:**
+  - `IdiosyncraticMomentum`
+  - `ShortTermReversal`
+  - `IndustryMomentum` (keeps industries)
+  - `BettingAgainstBeta` (keeps `USSLOWL_BETA`; relaxes zero active beta, so it runs only under `profile: experimental`)
+
+`sf_quant.testing.synthetic_market` gives a Barra-shaped market with planted effects for tests.
 
 ### `sf_quant.backtester`
 
