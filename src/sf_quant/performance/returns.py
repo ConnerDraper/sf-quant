@@ -3,11 +3,9 @@ import datetime as dt
 import polars as pl
 from sf_quant.data.assets import load_assets
 from sf_quant.data.benchmark import load_benchmark
-from sf_quant.schema.portfolio_schema import PortfolioSchema
-from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
 
 
-def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfolioRetSchema:
+def generate_multi_returns_from_weights(weights: pl.DataFrame) -> pl.DataFrame:
     """
     Generate portfolio, benchmark, and active returns from given portfolio weights.
 
@@ -18,8 +16,8 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
 
     Parameters
     ----------
-    weights : PortfolioSchema
-        Portfolio weights validated against PortfolioSchema.
+    weights : pl.DataFrame
+        Portfolio weights.
         Must include the following columns:
 
         - ``date`` (date): The date for each weight.
@@ -28,8 +26,8 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
 
     Returns
     -------
-    MultiPortfolioRetSchema
-        A validated DataFrame containing portfolio returns with the
+    pl.DataFrame
+        A DataFrame containing portfolio returns with the
         following columns:
 
         - ``date`` (date): The observation date.
@@ -105,10 +103,10 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
         .agg(agg_exprs)
         .sort("date", "portfolio")
     )
-    return MultiPortfolioRetSchema.validate(result)
+    return result
 
 
-def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchema:
+def generate_returns_from_weights(weights: pl.DataFrame) -> pl.DataFrame:
     """
     Generate portfolio returns from given portfolio weights.
 
@@ -117,8 +115,8 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
 
     Parameters
     ----------
-    weights : PortfolioSchema
-        Portfolio weights validated against PortfolioSchema.
+    weights : pl.DataFrame
+        Portfolio weights.
         Must include the following columns:
 
         - ``date`` (date): The date for each weight.
@@ -127,8 +125,8 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
 
     Returns
     -------
-    PortfolioRetSchema
-        A validated DataFrame containing portfolio returns with the
+    pl.DataFrame
+        A DataFrame containing portfolio returns with the
         following columns:
 
         - ``date`` (date): The observation date.
@@ -182,7 +180,7 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
         ])
         .sort("date")
     )
-    return PortfolioRetSchema.validate(result)
+    return result
 
 def _forward_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     """

@@ -3,7 +3,6 @@ import datetime as dt
 import polars as pl
 
 from ._views import fama_french
-from ..schema import FamaFrenchSchema
 
 
 def load_fama_french(start: dt.date, end: dt.date) -> pl.DataFrame:
@@ -44,7 +43,7 @@ def load_fama_french(start: dt.date, end: dt.date) -> pl.DataFrame:
     └────────────┴────────┴────────┴────────┴────────┴────────┴────────┘
     """
     result = fama_french().filter(pl.col("date").is_between(start, end)).collect()
-    return FamaFrenchSchema.validate(result)
+    return result
 
 
 def get_fama_french_columns() -> str:

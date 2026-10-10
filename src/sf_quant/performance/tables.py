@@ -1,10 +1,8 @@
 import polars as pl
 import polars.selectors as cs
-from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
-from sf_quant.schema.drawdown_schema import DrawdownSchema
 
 
-def generate_multi_returns_summary_table(returns: MultiPortfolioRetSchema, wide: bool = True) -> pl.DataFrame:
+def generate_multi_returns_summary_table(returns: pl.DataFrame, wide: bool = True) -> pl.DataFrame:
     """
     Generate a summary statistics table for multiple portfolio returns.
 
@@ -15,8 +13,8 @@ def generate_multi_returns_summary_table(returns: MultiPortfolioRetSchema, wide:
 
     Parameters
     ----------
-    returns : MultiPortfolioRetSchema
-        Portfolio returns validated against MultiPortfolioRetSchema.
+    returns : pl.DataFrame
+        Portfolio returns.
         Must include the following columns:
 
         - ``date`` (date): The observation date.
@@ -123,7 +121,7 @@ def generate_multi_returns_summary_table(returns: MultiPortfolioRetSchema, wide:
         )
 
 
-def generate_returns_summary_table(returns: PortfolioRetSchema) -> pl.DataFrame:
+def generate_returns_summary_table(returns: pl.DataFrame) -> pl.DataFrame:
     """
     Generate a summary statistics table for single portfolio returns.
 
@@ -132,8 +130,8 @@ def generate_returns_summary_table(returns: PortfolioRetSchema) -> pl.DataFrame:
 
     Parameters
     ----------
-    returns : PortfolioRetSchema
-        Portfolio returns validated against PortfolioRetSchema.
+    returns : pl.DataFrame
+        Portfolio returns.
         Must include the following columns:
 
         - ``date`` (date): The observation date.
@@ -197,7 +195,7 @@ def generate_returns_summary_table(returns: PortfolioRetSchema) -> pl.DataFrame:
     )
 
 
-def generate_drawdown_summary_table(drawdown: DrawdownSchema) -> pl.DataFrame:
+def generate_drawdown_summary_table(drawdown: pl.DataFrame) -> pl.DataFrame:
     """
     Generate a summary statistics table for portfolio drawdowns.
 
@@ -206,8 +204,8 @@ def generate_drawdown_summary_table(drawdown: DrawdownSchema) -> pl.DataFrame:
 
     Parameters
     ----------
-    drawdown : DrawdownSchema
-        Portfolio drawdowns validated against DrawdownSchema.
+    drawdown : pl.DataFrame
+        Portfolio drawdowns.
         Must include the following columns:
 
         - ``date`` (date): The observation date.

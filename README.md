@@ -1,6 +1,6 @@
 # Silver Fund Quant
 
-A quantitative finance library for the BYU Silver Fund quant team. Provides tools for data loading, signal construction, portfolio optimization, performance analysis, and signal research — all built on Polars DataFrames.
+A quantitative finance library for the BYU Silver Fund quant team. Provides tools for data loading, signal construction, portfolio optimization, backtesting, and performance analysis — all built on Polars DataFrames.
 
 ## Installation
 
@@ -19,6 +19,9 @@ pip install sf-quant
 - the leverage tools (`generate_leverage_from_weights`, its chart and summary table): the fund is always fully invested and long-only, so leverage is always 1
 - `generate_alpha_ics` and `generate_ic_chart`, which measured IC against total returns; use `sf_quant.signals.estimate_ic`, which measures it against the return the fund can actually earn
 - `load_optimal_weights`
+- `sf_quant.research` (quantile portfolios, Fama-French regressions, signal stats): long-short, levered, total-return tools the mandate can't use; use `sf_quant.signals.factor_report`, `estimate_ic`, and `sf_quant.backtest.compare`
+- `sf_quant.schema`: functions take and return plain Polars DataFrames
+- `sf_quant.testing`, now `tests/synthetic.py`
 
 Use `sf_quant.optimizer.mandate_optimizer`, `sf_quant.data.load_risk_model`, and `sf_quant.backtest.run_backtest` instead. To keep running old notebooks unchanged, pin `sf-quant<0.3`.
 
@@ -172,7 +175,7 @@ report.plot()                                                # the same, as char
   - `IndustryMomentum` (keeps industries)
   - `BettingAgainstBeta` (keeps `USSLOWL_BETA`). A worked example of a signal the mandate erases: any alpha linear in beta earns exactly zero under full investment and zero active beta.
 
-`sf_quant.testing.synthetic_market` gives a Barra-shaped market with planted effects for tests.
+Tests use `tests/synthetic.py`, a Barra-shaped synthetic market with planted effects, so they run without the BYU data store.
 
 ### `sf_quant.backtest`
 
@@ -210,20 +213,6 @@ These functions take a weight for **every day**: weights dated t earn day t+1's 
 | `generate_multi_returns_chart()` | Plot total/benchmark/active returns |
 | `generate_drawdown_chart()` | Plot drawdowns |
 | `plot_turnover()` | Plot portfolio turnover |
-
-### `sf_quant.research`
-
-Tools for signal analysis and factor research.
-
-| Function | Description |
-|---|---|
-| `generate_quantile_ports()` | Sort assets into quantile portfolios with long-short spread |
-| `vol_scale_ports()` | Scale portfolio returns to target volatility |
-| `beta_scale_ports()` | Scale portfolio returns to target beta |
-| `run_ff_regression()` | Fama-French 5-factor regression |
-| `run_quantile_ff_regression()` | FF regressions across quantile portfolios |
-| `get_signal_stats()` | Summary statistics for a signal |
-| `get_signal_distribution()` | Plot signal distribution |
 
 ## Documentation Development
 

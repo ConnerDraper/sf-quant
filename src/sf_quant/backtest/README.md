@@ -112,4 +112,4 @@ Names missing Barra risk data are held at benchmark weight and counted in `n_mis
 
 ## Tests
 
-`tests/backtest/` runs on synthetic Barra-shaped data (`sf_quant.testing`), so it doesn't need the BYU data store. It includes the handoff's canaries: perfect foresight, same-day leak, and random alpha.
+`tests/backtest/` runs on synthetic Barra-shaped data (`tests/synthetic.py`), so it doesn't need the BYU data store. It includes the handoff's canaries: perfect foresight, same-day leak, and random alpha.

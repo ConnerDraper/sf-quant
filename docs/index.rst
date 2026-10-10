@@ -15,5 +15,4 @@ Silver Fund Quant documentation
    reference/signals
    reference/backtest
    reference/performance
-   reference/research
 

@@ -2,12 +2,10 @@ import polars as pl
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sf_quant.schema.drawdown_schema import DrawdownSchema
-from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
 
 
 def generate_returns_chart(
-    returns: PortfolioRetSchema,
+    returns: pl.DataFrame,
     title: str,
     subtitle: str | None = None,
     log_scale: bool = False,
@@ -22,8 +20,8 @@ def generate_returns_chart(
 
     Parameters
     ----------
-    returns : PortfolioRetSchema
-        Portfolio returns validated against PortfolioRetSchema.
+    returns : pl.DataFrame
+        Portfolio returns.
         Must include the following columns:
 
         - ``date`` (date): The observation date.
@@ -96,7 +94,7 @@ def generate_returns_chart(
         plt.show()
 
 def generate_multi_returns_chart(
-    returns: MultiPortfolioRetSchema,
+    returns: pl.DataFrame,
     title: str,
     subtitle: str | None = None,
     log_scale: bool = False,
@@ -112,8 +110,8 @@ def generate_multi_returns_chart(
 
     Parameters
     ----------
-    returns : MultiPortfolioRetSchema
-        Portfolio returns validated against MultiPortfolioRetSchema.
+    returns : pl.DataFrame
+        Portfolio returns.
         Must include the following columns:
 
         - ``date`` (date): The observation date.
@@ -190,7 +188,7 @@ def generate_multi_returns_chart(
         plt.show()
 
 def generate_drawdown_chart(
-    drawdowns: DrawdownSchema,
+    drawdowns: pl.DataFrame,
     title: str,
     subtitle: str | None = None,
     file_name: str | None = None,
@@ -203,8 +201,8 @@ def generate_drawdown_chart(
 
     Parameters
     ----------
-    drawdowns : DrawdownSchema
-        Portfolio drawdowns validated against DrawdownSchema.
+    drawdowns : pl.DataFrame
+        Portfolio drawdowns.
         Must include the following columns:
 
         - ``date`` (date): The observation date.

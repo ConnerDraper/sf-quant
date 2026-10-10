@@ -8,7 +8,7 @@ Ten years of synthetic data keeps the IR standard error near
 import polars as pl
 import pytest
 from conftest import random_alphas, run
-from sf_quant.testing import synthetic_market
+from synthetic import synthetic_market
 
 from sf_quant.backtest.backtest import schedule
 

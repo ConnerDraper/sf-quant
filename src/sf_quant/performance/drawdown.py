@@ -1,21 +1,19 @@
 import polars as pl
-from sf_quant.schema.drawdown_schema import DrawdownSchema
-from sf_quant.schema.returns_schema import PortfolioRetSchema
 
-def generate_drawdown_from_returns(returns: PortfolioRetSchema) -> DrawdownSchema:
+def generate_drawdown_from_returns(returns: pl.DataFrame) -> pl.DataFrame:
     """
     Calculate drawdowns for each portfolio over time.
 
     Parameters
     ----------
-        returns (PortfolioRetSchema): Portfolio returns validated against PortfolioRetSchema.
+        returns (pl.DataFrame): Portfolio returns.
             Must include the following columns:
             - ``date`` (date): The observation date.
             - ``return`` (float): Daily portfolio return.
 
     Returns
     -------
-        DrawdownSchema: A validated DataFrame with columns:
+        pl.DataFrame: A DataFrame with columns:
             - ``date`` (date): The observation date.
             - ``drawdown`` (float): Drawdown from peak (≤ 0).
     
@@ -70,4 +68,4 @@ def generate_drawdown_from_returns(returns: PortfolioRetSchema) -> DrawdownSchem
         )
         .select("date", "drawdown")
     )
-    return DrawdownSchema.validate(result)
+    return result

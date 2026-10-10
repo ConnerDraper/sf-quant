@@ -7,7 +7,7 @@ import polars as pl
 import pytest
 import sf_quant.signals as sg
 from conftest import config, random_alphas, run
-from sf_quant.testing import INDUSTRIES, synthetic_market
+from synthetic import INDUSTRIES, synthetic_market
 
 from sf_quant.backtest import run_backtest
 from sf_quant.backtest.compare import compare

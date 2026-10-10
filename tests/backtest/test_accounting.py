@@ -5,7 +5,7 @@ import datetime as dt
 import polars as pl
 import pytest
 from conftest import run, tiny_alphas, tiny_market
-from sf_quant.testing import business_days
+from synthetic import business_days
 
 DAYS = business_days(dt.date(2024, 1, 29), 30)  # Jan 29 .. Mar 8, 2024
 FORMATION, EXECUTION = dt.date(2024, 1, 31), dt.date(2024, 2, 1)

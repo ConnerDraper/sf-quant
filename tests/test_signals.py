@@ -8,7 +8,7 @@ import pytest
 
 import sf_quant.signals as sg
 from sf_quant.signals.alpha import contexts, residual_scores, target_returns, universe_frame
-from sf_quant.testing import INDUSTRIES, PanelMarketData, synthetic_market
+from synthetic import INDUSTRIES, PanelMarketData, synthetic_market
 
 
 @dataclass(frozen=True)

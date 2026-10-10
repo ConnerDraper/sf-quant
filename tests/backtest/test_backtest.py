@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 import pytest
 from conftest import config, random_alphas, run
-from sf_quant.testing import business_days, synthetic_market
+from synthetic import business_days, synthetic_market
 
 from sf_quant.backtest import BacktestConfig, InvariantError, backtest
 from sf_quant.backtest.backtest import Rebalance, schedule
