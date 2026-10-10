@@ -1,0 +1,20 @@
+# sf-backtester config. The mandate is fixed: long-only, fully invested,
+# zero active beta, 5% tracking error.
+
+name: momentum                # output folder for the CLI: runs/<name>
+start: 2010-01-01
+end: 2024-12-31
+rebalance: monthly            # monthly | weekly | daily
+execution_lag_days: 1         # alpha formed at close t, traded at close t+1
+
+factor_control: neutral       # neutral (zero exposure to factors no signal may keep) | risk_model
+bps_grid: [0, 5, 10, 20]      # costs charged on realized turnover
+min_alpha_coverage: 0.5
+aum: 1000000                  # positions worth less than one share are flagged
+
+n_workers: 8
+slurm:
+  n_cpus: 8
+  mem: 32G
+  time: "06:00:00"
+  email: your.email@byu.edu
