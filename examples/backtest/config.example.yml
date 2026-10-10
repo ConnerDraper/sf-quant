@@ -1,4 +1,4 @@
-# sf-backtester config. The mandate is fixed: long-only, fully invested,
+# sf_quant.backtest config. The mandate is fixed: long-only, fully invested,
 # zero active beta, 5% tracking error.
 
 name: momentum                # output folder for the CLI: runs/<name>

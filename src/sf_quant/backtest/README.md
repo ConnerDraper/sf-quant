@@ -1,4 +1,4 @@
-# sf-backtester
+# sf_quant.backtest
 
 Walk-forward backtests of the BYU Silver Fund mandate. You supply an alpha panel and a config. The backtester loads the benchmark, Barra risk model, and returns itself, then solves the mandate problem at each rebalance and returns realized returns, costs, and diagnostics.
 
@@ -12,17 +12,17 @@ max hᵀα  s.t.  Σh = 0,  βᵀh = 0,  hᵀVh ≤ 0.05²,  w_b + h ≥ 0
 - β = Vb / (bᵀVb) is computed from the same Barra V. It is not Barra's predicted beta.
 - The mandate is not configurable: every backtest is long-only, fully invested, zero active beta, and 5% TE.
 
-> **0.3.0 is a breaking rebuild.** The gamma runners (`BacktestRunner`, `BacktestDynamicRunner`, `BacktestCostAwareRunner`), the `run-dynamic` command, the per-year SLURM array, the `predicted_beta` input column, and the constraint list are gone.
+> This was the separate sf-backtester package until it merged into sf-quant 0.3.0. Replace `from sf_backtester import ...` with `from sf_quant.backtest import ...`, and the `sf_backtester` command with `sf_backtest`. The gamma runners (`BacktestRunner`, `BacktestDynamicRunner`, `BacktestCostAwareRunner`), the `run-dynamic` command, the per-year SLURM array, the `predicted_beta` input column, and the constraint list are gone.
 
 ## Usage
 
 ```bash
-sf_backtester run config.yml --alphas alphas.parquet              # in this process
-sf_backtester submit config.yml --alphas alphas.parquet [--dry-run] # one SLURM node
+sf_backtest run config.yml --alphas alphas.parquet              # in this process
+sf_backtest submit config.yml --alphas alphas.parquet [--dry-run] # one SLURM node
 ```
 
 ```python
-from sf_backtester import BacktestConfig, run_backtest
+from sf_quant.backtest import BacktestConfig, run_backtest
 
 cfg = BacktestConfig.from_yaml("config.yml")
 result = run_backtest(alphas, cfg)   # alphas: pl.DataFrame[date, barrid, alpha]
@@ -32,7 +32,7 @@ result.diagnostics
 result.save("runs/momentum/")
 ```
 
-See [config.example.yml](config.example.yml) for every option and [example/](example/) for an end-to-end momentum run.
+See [config.example.yml](../../../examples/backtest/config.example.yml) for every option and [examples/backtest/](../../../examples/backtest/) for an end-to-end momentum run.
 
 ## Layout
 
@@ -45,7 +45,7 @@ See [config.example.yml](config.example.yml) for every option and [example/](exa
 | `compare.py` | `compare`: should a candidate signal join the current composite? |
 | `cli.py` | `run` and `submit` |
 
-Market data (`MarketData`, `SfQuantMarketData`) and the signal library (`sf_quant.signals`) live in sf-quant.
+Market data (`MarketData`, `SfQuantMarketData`) lives in `sf_quant.data`, and the signal library in `sf_quant.signals`.
 
 ## Input
 
@@ -68,7 +68,7 @@ With `factor_control: neutral` (the default), the portfolio is held at exactly z
 ## Comparing a candidate signal
 
 ```python
-from sf_backtester.compare import compare
+from sf_quant.backtest import compare
 from sf_quant.signals import IdiosyncraticMomentum, ShortTermReversal
 
 c = compare(baseline=[IdiosyncraticMomentum()], candidate=ShortTermReversal(), config=cfg)
@@ -110,19 +110,6 @@ A run raises instead of producing numbers if any of these fails:
 
 Names missing Barra risk data are held at benchmark weight and counted in `n_missing_risk`. If a date fails to solve, the previous holdings keep drifting; the failure shows in `diagnostics` and `summary.failed_rebalances`.
 
-## Development
+## Tests
 
-```bash
-uv sync          # uses the sibling ../sf-quant checkout (tool.uv.sources)
-uv run pytest
-```
-
-The tests run on synthetic Barra-shaped data (`sf_quant.testing`), so they don't need the BYU data store. They include the handoff's canaries: perfect foresight, same-day leak, and random alpha.
-
-## Publishing
-
-1. Bump the version: `uv version x.y.z`
-2. Commit and tag: `git tag vx.y.z`
-3. Push: `git push --tags`
-
-Build with `uv build --no-sources` so the local sf-quant path isn't used.
+`tests/backtest/` runs on synthetic Barra-shaped data (`sf_quant.testing`), so it doesn't need the BYU data store. It includes the handoff's canaries: perfect foresight, same-day leak, and random alpha.

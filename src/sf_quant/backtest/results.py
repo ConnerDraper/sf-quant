@@ -14,8 +14,8 @@ import numpy as np
 import polars as pl
 import yaml
 
-from sf_backtester.accounting import net_column
-from sf_backtester.config import BacktestConfig
+from .accounting import net_column
+from .config import BacktestConfig
 
 TRADING_DAYS = 252
 
@@ -77,7 +77,7 @@ def build_result(
             "allowed_factors": sorted(panel.allowed_factors),
             "data_snapshot": data_snapshot.isoformat(),
             "git_sha": _git_sha(),
-            "packages": {p: _version(p) for p in ("sf-backtester", "sf-quant", "cvxpy", "clarabel", "polars", "numpy")},
+            "packages": {p: _version(p) for p in ("sf-quant", "cvxpy", "clarabel", "polars", "numpy")},
             "created": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         },
     }

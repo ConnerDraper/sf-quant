@@ -15,9 +15,9 @@ import polars as pl
 from sf_quant.data import MarketData, SfQuantMarketData
 from sf_quant.signals import FactorReport, Signal, build_composite, factor_report
 
-from sf_backtester.backtest import run_backtest
-from sf_backtester.config import BacktestConfig
-from sf_backtester.results import BacktestResult
+from .backtest import run_backtest
+from .config import BacktestConfig
+from .results import BacktestResult
 
 
 @dataclass

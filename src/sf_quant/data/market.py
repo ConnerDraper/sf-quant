@@ -1,4 +1,4 @@
-"""Market data interface shared by the signal library and sf-backtester.
+"""Market data interface shared by the signal library and the backtester.
 
 Conventions for every implementation:
 

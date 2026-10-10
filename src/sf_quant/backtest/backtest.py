@@ -4,7 +4,7 @@
    ``execution_lag_days`` later at the close.
 2. Solve the mandate problem on each formation date. Dates are
    independent, so they can be solved in parallel.
-3. Account for daily returns sequentially (:mod:`sf_backtester.accounting`).
+3. Account for daily returns sequentially (:mod:`sf_quant.backtest.accounting`).
 
 The run refuses to produce numbers when an invariant breaks.
 """
@@ -23,9 +23,9 @@ from sf_quant.data import MarketData, SfQuantMarketData, rebalance_dates
 from sf_quant.optimizer import active_variance, benchmark_betas, mandate_optimizer
 from sf_quant.signals import AlphaPanel
 
-from sf_backtester.accounting import account
-from sf_backtester.config import ACTIVE_RISK_TARGET, BacktestConfig, ConfigError
-from sf_backtester.results import BacktestResult, build_result
+from .accounting import account
+from .config import ACTIVE_RISK_TARGET, BacktestConfig, ConfigError
+from .results import BacktestResult, build_result
 
 BENCHMARK_VOL_RANGE = (0.08, 0.40)  # sqrt(b'Vb) outside this: risk model isn't annualized decimal
 TOLERANCE = 1e-6

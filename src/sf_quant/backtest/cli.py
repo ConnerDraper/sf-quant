@@ -11,13 +11,13 @@ from pathlib import Path
 import click
 import polars as pl
 
-from sf_backtester.backtest import run_backtest
-from sf_backtester.config import BacktestConfig
+from .backtest import run_backtest
+from .config import BacktestConfig
 
 
 @click.group()
 def main() -> None:
-    """sf-backtester: walk-forward backtests of the Silver Fund mandate."""
+    """Walk-forward backtests of the Silver Fund mandate."""
 
 
 @main.command()
@@ -57,7 +57,7 @@ def sbatch_script(cfg: BacktestConfig, config_path: Path, alphas_path: Path, out
     slurm, logs = cfg.slurm, out_dir.resolve() / "logs"
     command = shlex.join(
         str(part)
-        for part in (sys.executable, "-m", "sf_backtester.cli", "run", config_path.resolve(),
+        for part in (sys.executable, "-m", "sf_quant.backtest.cli", "run", config_path.resolve(),
                      "--alphas", alphas_path.resolve(), "--out", out_dir.resolve())
     )
     lines = [

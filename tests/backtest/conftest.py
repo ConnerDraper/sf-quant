@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 from sf_quant.testing import PanelMarketData, synthetic_market
 
-from sf_backtester import BacktestConfig, run_backtest
+from sf_quant.backtest import BacktestConfig, run_backtest
 
 
 def config(md, **overrides) -> BacktestConfig:

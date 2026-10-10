@@ -45,7 +45,8 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     - Weights dated t (set at the close of t) earn the next trading day's
       return. Each output row is labeled with the weight date t.
     - Pass a weight for every day; nothing drifts between dates. For target
-      weights on rebalance dates that drift in between, use sf-backtester.
+      weights on rebalance dates that drift in between, use
+      :func:`sf_quant.backtest.run_backtest`.
     - Returns are computed as the weighted sum of returns by portfolio.
 
     Examples
@@ -140,7 +141,8 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
     - Weights dated t (set at the close of t) earn the next trading day's
       return. Each output row is labeled with the weight date t.
     - Pass a weight for every day; nothing drifts between dates. For target
-      weights on rebalance dates that drift in between, use sf-backtester.
+      weights on rebalance dates that drift in between, use
+      :func:`sf_quant.backtest.run_backtest`.
 
     Examples
     --------

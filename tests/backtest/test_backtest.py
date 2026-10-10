@@ -11,9 +11,9 @@ import pytest
 from conftest import config, random_alphas, run
 from sf_quant.testing import business_days, synthetic_market
 
-from sf_backtester import BacktestConfig, InvariantError, backtest
-from sf_backtester.backtest import Rebalance, schedule
-from sf_backtester.cli import sbatch_script
+from sf_quant.backtest import BacktestConfig, InvariantError, backtest
+from sf_quant.backtest.backtest import Rebalance, schedule
+from sf_quant.backtest.cli import sbatch_script
 
 
 @pytest.fixture
@@ -139,4 +139,4 @@ def test_sbatch_script_is_single_node():
     assert "#SBATCH --nodes=1" in script
     assert "#SBATCH --cpus-per-task=16" in script
     assert "#SBATCH --array" not in script
-    assert "sf_backtester.cli run" in script
+    assert "sf_quant.backtest.cli run" in script

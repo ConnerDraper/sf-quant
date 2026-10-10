@@ -10,7 +10,7 @@ import pytest
 from conftest import random_alphas, run
 from sf_quant.testing import synthetic_market
 
-from sf_backtester.backtest import schedule
+from sf_quant.backtest.backtest import schedule
 
 N_DAYS = 2520
 

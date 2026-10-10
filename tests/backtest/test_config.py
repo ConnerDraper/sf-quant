@@ -2,7 +2,7 @@ import datetime as dt
 
 import pytest
 
-from sf_backtester import BacktestConfig, ConfigError
+from sf_quant.backtest import BacktestConfig, ConfigError
 
 BASE = {"name": "x", "start": "2010-01-01", "end": "2012-12-31"}
 

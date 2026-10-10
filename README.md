@@ -1,6 +1,6 @@
 # Silver Fund Quant
 
-A quantitative finance library for the BYU Silver Fund quant team. Provides tools for data loading, signal construction, portfolio optimization, performance analysis, and signal research — all built on Polars DataFrames. Backtests live in [sf-backtester](https://github.com/ConnerDraper/sf-backtester).
+A quantitative finance library for the BYU Silver Fund quant team. Provides tools for data loading, signal construction, portfolio optimization, performance analysis, and signal research — all built on Polars DataFrames.
 
 ## Installation
 
@@ -20,7 +20,7 @@ pip install sf-quant
 - `generate_alpha_ics` and `generate_ic_chart`, which measured IC against total returns; use `sf_quant.signals.estimate_ic`, which measures it against the return the fund can actually earn
 - `load_optimal_weights`
 
-Use `sf_quant.optimizer.mandate_optimizer`, `sf_quant.data.load_risk_model`, and sf-backtester's `run_backtest` instead. To keep running old notebooks unchanged, pin `sf-quant<0.3`.
+Use `sf_quant.optimizer.mandate_optimizer`, `sf_quant.data.load_risk_model`, and `sf_quant.backtest.run_backtest` instead. To keep running old notebooks unchanged, pin `sf-quant<0.3`.
 
 ## Environment Configuration
 
@@ -56,7 +56,7 @@ This will override any values set via environment variables.
 
 ## Quick Start
 
-Build alphas from a signal, then solve the fund's mandate problem for one date. For full walk-forward backtests with returns, costs, and diagnostics, use [sf-backtester](https://github.com/ConnerDraper/sf-backtester).
+Build alphas from a signal, then solve the fund's mandate problem for one date. For full walk-forward backtests with returns, costs, and diagnostics, use [`sf_quant.backtest`](#sf_quantbacktest).
 
 ```python
 import datetime as dt
@@ -174,11 +174,30 @@ report.plot()                                                # the same, as char
 
 `sf_quant.testing.synthetic_market` gives a Barra-shaped market with planted effects for tests.
 
+### `sf_quant.backtest`
+
+Walk-forward backtests of the fund's mandate: a mandate solve at each rebalance, holdings that drift in between, execution lag, turnover, costs, and diagnostics. sf-backtester merged in here in 0.3.0: replace `sf_backtester` imports with `sf_quant.backtest`, and the `sf_backtester` command with `sf_backtest`.
+
+```python
+from sf_quant.backtest import BacktestConfig, run_backtest
+
+cfg = BacktestConfig.from_yaml("config.yml")
+result = run_backtest(alphas, cfg)   # alphas: DataFrame[date, barrid, alpha] or an AlphaPanel
+result.save("runs/momentum/")
+```
+
+```bash
+sf_backtest run config.yml --alphas alphas.parquet              # in this process
+sf_backtest submit config.yml --alphas alphas.parquet [--dry-run] # one SLURM node
+```
+
+See the [module README](src/sf_quant/backtest/README.md) for config, timing, costs, outputs, and invariants, and [examples/backtest/](examples/backtest/) for an end-to-end momentum run.
+
 ### `sf_quant.performance`
 
 Compute and visualize portfolio performance metrics.
 
-These functions take a weight for **every day**: weights dated t earn day t+1's return, with no drift between dates. To backtest a strategy that sets target weights on rebalance dates and lets holdings drift in between (with execution lag, turnover, and costs), use sf-backtester's `run_backtest`.
+These functions take a weight for **every day**: weights dated t earn day t+1's return, with no drift between dates. To backtest a strategy that sets target weights on rebalance dates and lets holdings drift in between (with execution lag, turnover, and costs), use `sf_quant.backtest.run_backtest`.
 
 | Function | Description |
 |---|---|
