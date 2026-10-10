@@ -1,4 +1,4 @@
-"""Schedule, invariants, holdout gating, failure policy, determinism, and outputs."""
+"""Schedule, invariants, failed solves, determinism, and outputs."""
 
 import dataclasses
 import datetime as dt
@@ -70,20 +70,7 @@ def test_mandate_holds_on_every_rebalance(market, alphas):
     assert (result.diagnostics["active_beta"].abs() < 1e-6).all()
 
 
-# Holdout and failures
-
-
-def test_holdout_is_cut_unless_unlocked(market, alphas):
-    holdout = dt.date(2011, 7, 1)
-    with pytest.warns(UserWarning, match="holdout"):
-        locked = run(market, alphas, holdout_start=holdout)
-    assert locked.returns["date"].max() < holdout
-    assert locked.weights["formation_date"].max() < holdout
-    assert locked.summary["metadata"]["holdout_used"] is False
-
-    unlocked = run(market, alphas, holdout_start=holdout, unlock_holdout=True)
-    assert unlocked.returns["date"].max() > holdout
-    assert unlocked.summary["metadata"]["holdout_used"] is True
+# Failed solves
 
 
 @pytest.fixture
@@ -107,11 +94,6 @@ def test_failed_rebalance_holds_previous_weights(market, alphas, second_solve_fa
     # The previous holdings kept drifting through the failed date: no gap in daily returns.
     first = market.days.index(result.returns["date"].min())
     assert result.returns["date"].to_list() == market.days[first:]
-
-
-def test_failed_rebalance_raises_when_configured(market, alphas, second_solve_fails):
-    with pytest.raises(InvariantError, match="failed to solve"):
-        run(market, alphas, on_failure="raise")
 
 
 def test_names_missing_risk_data_are_held_at_benchmark(alphas):

@@ -60,18 +60,18 @@ def test_industry_momentum_keeps_capped_industry_bets(planted_market):
     assert result.summary["metadata"]["allowed_factors"] == sorted(sg.INDUSTRY_FACTORS)
 
 
-def test_beta_relaxation_needs_the_experimental_profile(planted_market):
+def test_the_mandate_erases_most_of_betting_against_beta(planted_market):
+    # Alpha linear in beta earns nothing under sum(h) = 0 and beta'h = 0; only the
+    # nonlinear remainder survives, so BAB keeps far less of its signal than the others.
     md = planted_market
-    panel = sg.build_alpha(sg.BettingAgainstBeta(), md, md.days[0], md.days[-1])
-    with pytest.warns(UserWarning, match="zero active beta"):
-        mandate = run_backtest(panel, after_warmup(md), md)
-    assert mandate.summary["metadata"]["ignored_relaxations"] == ["zero_active_beta"]
-    assert mandate.diagnostics["active_beta"].abs().max() < 1e-6
+    cfg = after_warmup(md)
 
-    experimental = run_backtest(panel, after_warmup(md, profile="experimental"), md)
-    assert experimental.summary["metadata"]["ignored_relaxations"] == []
-    assert experimental.diagnostics["active_beta"].mean() < -0.01
-    assert experimental.diagnostics["expected_active_return"].mean() > mandate.diagnostics["expected_active_return"].mean()
+    def transfer(signal):
+        result = run_backtest(sg.build_alpha(signal, md, md.days[0], md.days[-1]), cfg, md)
+        assert result.diagnostics["active_beta"].abs().max() < 1e-6
+        return result.diagnostics["transfer_coefficient"].mean()
+
+    assert transfer(sg.BettingAgainstBeta()) < 0.5 * transfer(Planted())
 
 
 def test_compare_rewards_new_information_not_duplicates(planted_market):

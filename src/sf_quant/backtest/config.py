@@ -1,8 +1,7 @@
 """Backtest configuration, loaded from a flat YAML file.
 
-Under ``profile: mandate`` the tracking-error target is locked to the Silver
-Fund mandate, so a research variant can't pass as a backtest of the fund.
-Long-only, full investment, and zero active beta are always enforced.
+The fund's mandate is not configurable: every backtest is long-only, fully
+invested, zero active beta, and sized to 5% tracking error.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from typing import Any, Self
 
 import yaml
 
-MANDATE_ACTIVE_RISK = 0.05
+ACTIVE_RISK_TARGET = 0.05  # the mandate's annualized tracking error
 
 
 class ConfigError(ValueError):
@@ -39,21 +38,12 @@ class BacktestConfig:
     end: dt.date
     rebalance: str = "monthly"  # monthly | weekly | daily
     execution_lag_days: int = 1  # alpha formed at close t, traded at close t + lag
-    profile: str = "mandate"  # mandate | experimental
-    active_risk_target: float = MANDATE_ACTIVE_RISK  # locked under profile: mandate
-    factor_bounds: dict[str, float] = field(default_factory=dict)  # e.g. {USSLOWL_SIZE: 0.10}
     # neutral: exactly zero exposure to every factor the signals aren't allowed to keep.
     # risk_model: no exact neutrality; the risk model alone discourages factor bets.
     factor_control: str = "neutral"
-    default_factor_cap: float | None = None  # cap for allowed factors with no signal cap
-    on_failure: str = "hold_previous"  # hold_previous | raise
     bps_grid: list[float] = field(default_factory=lambda: [0.0, 5.0, 10.0, 20.0])
-    holdout_start: dt.date | None = dt.date(2025, 1, 1)
-    unlock_holdout: bool = False
     min_alpha_coverage: float = 0.5
-    pass_ir: float = 0.0  # breakeven cost is where net IR falls to this
     aum: float = 1_000_000.0
-    min_position_dollars: float = 100.0
     n_workers: int = 1
     slurm: SlurmConfig = field(default_factory=SlurmConfig)
 
@@ -62,16 +52,7 @@ class BacktestConfig:
             (self.end >= self.start, "end must be on or after start"),
             (self.rebalance in ("monthly", "weekly", "daily"), "rebalance must be monthly, weekly, or daily"),
             (self.execution_lag_days >= 0, "execution_lag_days must be non-negative"),
-            (self.profile in ("mandate", "experimental"), "profile must be mandate or experimental"),
-            (
-                self.profile != "mandate" or self.active_risk_target == MANDATE_ACTIVE_RISK,
-                f"active_risk_target is locked to {MANDATE_ACTIVE_RISK} under profile: mandate",
-            ),
-            (self.active_risk_target > 0, "active_risk_target must be positive"),
-            (all(cap > 0 for cap in self.factor_bounds.values()), "factor_bounds caps must be positive"),
             (self.factor_control in ("neutral", "risk_model"), "factor_control must be neutral or risk_model"),
-            (self.default_factor_cap is None or self.default_factor_cap > 0, "default_factor_cap must be positive"),
-            (self.on_failure in ("hold_previous", "raise"), "on_failure must be hold_previous or raise"),
             (all(bps >= 0 for bps in self.bps_grid), "bps_grid values must be non-negative"),
             (0 <= self.min_alpha_coverage <= 1, "min_alpha_coverage must be in [0, 1]"),
             (self.n_workers >= 1, "n_workers must be at least 1"),
@@ -83,7 +64,7 @@ class BacktestConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
         data = dict(data)
-        for key in ("start", "end", "holdout_start"):
+        for key in ("start", "end"):
             if isinstance(data.get(key), str):
                 data[key] = dt.date.fromisoformat(data[key])
         if "bps_grid" in data:

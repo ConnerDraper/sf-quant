@@ -12,7 +12,6 @@ The run refuses to produce numbers when an invariant breaks.
 from __future__ import annotations
 
 import datetime as dt
-import warnings
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from itertools import repeat
@@ -25,7 +24,7 @@ from sf_quant.optimizer import active_variance, benchmark_betas, mandate_optimiz
 from sf_quant.signals import AlphaPanel
 
 from sf_backtester.accounting import account
-from sf_backtester.config import BacktestConfig, ConfigError
+from sf_backtester.config import ACTIVE_RISK_TARGET, BacktestConfig, ConfigError
 from sf_backtester.results import BacktestResult, build_result
 
 BENCHMARK_VOL_RANGE = (0.08, 0.40)  # sqrt(b'Vb) outside this: risk model isn't annualized decimal
@@ -48,8 +47,7 @@ class FactorPolicy:
 
     allowed: frozenset[str]  # factors the signals may bet on
     neutral: bool  # hold every other factor at exactly zero active exposure
-    caps: dict[str, float]  # max |active exposure| by factor
-    zero_active_beta: bool
+    caps: dict[str, float]  # max |active exposure| by factor, from the signals
 
 
 @dataclass
@@ -93,15 +91,16 @@ def run_backtest(
     """
     md = market_data if market_data is not None else SfQuantMarketData()
     panel = alphas if isinstance(alphas, AlphaPanel) else AlphaPanel(alphas)
-    policy, ignored = _factor_policy(config, panel)
+    policy = FactorPolicy(
+        panel.allowed_factors, config.factor_control == "neutral", dict(panel.constraints.factor_caps)
+    )
     alphas = _validate_alphas(panel.alphas)
-    alphas, end, holdout_used = _apply_holdout(config, alphas)
 
-    benchmark = md.benchmark_weights(config.start, end).sort("date")
+    benchmark = md.benchmark_weights(config.start, config.end).sort("date")
     days = benchmark["date"].unique().sort().to_list()
     rebalances = schedule(days, config.rebalance, config.execution_lag_days)
     if not rebalances:
-        raise ConfigError(f"No rebalance between {config.start} and {end} has a following trading day.")
+        raise ConfigError(f"No rebalance between {config.start} and {config.end} has a following trading day.")
 
     formations = [r.formation for r in rebalances]
     benchmarks = _by_date(benchmark, formations, "weight")
@@ -124,19 +123,12 @@ def run_backtest(
         with ProcessPoolExecutor(max_workers=config.n_workers) as pool:
             solved = list(pool.map(solve, *args))
 
-    failed = [s for s in solved if not s.ok]
-    if failed and config.on_failure == "raise":
-        raise InvariantError(
-            f"{len(failed)} rebalance(s) failed to solve, e.g. {failed[0].rebalance.formation} "
-            f"({failed[0].diagnostics['solver_status']})."
-        )
-    # hold_previous: a failed date doesn't trade, so the previous holdings keep drifting.
+    # A failed date doesn't trade: the previous holdings keep drifting, and
+    # the failure is counted in the summary and shown in diagnostics.
     returns, turnover, factor_returns, n_missing = account(
         [s for s in solved if s.ok], days, benchmark, md, config.bps_grid
     )
-    return build_result(
-        solved, returns, turnover, factor_returns, n_missing, config, days[-1], holdout_used, panel, ignored
-    )
+    return build_result(solved, returns, turnover, factor_returns, n_missing, config, days[-1], panel)
 
 
 def schedule(days: list[dt.date], frequency: str, lag: int) -> list[Rebalance]:
@@ -183,23 +175,16 @@ def solve(
             "The risk model is probably not in annualized decimal units."
         )
 
-    unknown = set(config.factor_bounds) - set(rm.factor_names)
-    if unknown:
-        raise ConfigError(f"factor_bounds names unknown factor(s): {sorted(unknown)}.")
     # Signal caps may name factors this risk model lacks (e.g. a full industry set); skip those.
     bounds = {rm.factor_names.index(name): cap for name, cap in policy.caps.items() if name in rm.factor_names}
     neutral = [
         k for k, name in enumerate(rm.factor_names) if policy.neutral and name not in policy.allowed and k not in bounds
     ]
 
-    result = mandate_optimizer(
-        rm.ids, alpha, B, F, delta, b, config.active_risk_target, bounds,
-        neutral_factors=neutral, zero_active_beta=policy.zero_active_beta,
-    )
+    result = mandate_optimizer(rm.ids, alpha, B, F, delta, b, ACTIVE_RISK_TARGET, bounds, neutral_factors=neutral)
     h_all = np.zeros(len(universe))
     if result.ok:
-        beta = benchmark_betas(B, F, delta, b) if policy.zero_active_beta else None
-        _check_solution(date_, result, b, beta, config.active_risk_target)
+        _check_solution(date_, result, b, benchmark_betas(B, F, delta, b))
         h_all[rows] = result.active_weights
     w_all = np.where(b_all + h_all > DUST, b_all + h_all, 0.0)
 
@@ -225,7 +210,6 @@ def solve(
         "n_universe": len(universe),
         "n_missing_risk": len(rm.missing_ids),
         "benchmark_vol": benchmark_vol,
-        "n_positions_below_min": int((held & (dollars < config.min_position_dollars)).sum()),
         "n_positions_under_one_share": int((held & (dollars < price)).sum()),
     }
 
@@ -250,32 +234,6 @@ def solve(
     )
 
 
-def _factor_policy(config: BacktestConfig, panel: AlphaPanel) -> tuple[FactorPolicy, list[str]]:
-    """
-    Combine the panel's allowances and constraints with the config. Caps:
-    the tighter of the config's factor_bounds and the signals' caps, plus
-    default_factor_cap for allowed factors without one. Relaxing zero active
-    beta is honored only under profile: experimental.
-    """
-    caps = dict(panel.constraints.factor_caps)
-    if config.default_factor_cap is not None:
-        for name in panel.allowed_factors:
-            caps.setdefault(name, config.default_factor_cap)
-    for name, cap in config.factor_bounds.items():
-        caps[name] = min(cap, caps.get(name, cap))
-
-    zero_active_beta, ignored = panel.constraints.zero_active_beta, []
-    if not zero_active_beta and config.profile == "mandate":
-        warnings.warn(
-            "The alphas relax zero active beta, which the mandate forbids; ignoring it. "
-            "Use profile: experimental to run without it.",
-            stacklevel=3,
-        )
-        zero_active_beta, ignored = True, ["zero_active_beta"]
-    policy = FactorPolicy(panel.allowed_factors, config.factor_control == "neutral", caps, zero_active_beta)
-    return policy, ignored
-
-
 def _validate_alphas(alphas: pl.DataFrame) -> pl.DataFrame:
     missing = {"date", "barrid", "alpha"} - set(alphas.columns)
     if missing:
@@ -288,24 +246,6 @@ def _validate_alphas(alphas: pl.DataFrame) -> pl.DataFrame:
     if alphas.select("date", "barrid").is_duplicated().any():
         raise InvariantError("Alpha panel contains duplicate (date, barrid) rows.")
     return alphas
-
-
-def _apply_holdout(config: BacktestConfig, alphas: pl.DataFrame) -> tuple[pl.DataFrame, dt.date, bool]:
-    """Stop the run before the holdout unless it is explicitly unlocked."""
-    holdout, end = config.holdout_start, config.end
-    if holdout is None:
-        return alphas, end, False
-    if config.unlock_holdout:
-        return alphas, end, end >= holdout
-
-    n_dropped = alphas.filter(pl.col("date") >= holdout).height
-    if end >= holdout or n_dropped:
-        warnings.warn(
-            f"Stopping at the holdout ({holdout}): dropped {n_dropped} alpha rows. "
-            "Set unlock_holdout only for the vote-time run.",
-            stacklevel=3,
-        )
-    return alphas.filter(pl.col("date") < holdout), min(end, holdout - dt.timedelta(days=1)), False
 
 
 def _by_date(df: pl.DataFrame, dates: list[dt.date], value: str) -> dict[dt.date, dict[str, float]]:
@@ -326,14 +266,15 @@ def _check_coverage(
         )
 
 
-def _check_solution(date_: dt.date, result, b: np.ndarray, beta: np.ndarray | None, target: float) -> None:
-    """beta is None when zero active beta was relaxed (profile: experimental)."""
+def _check_solution(date_: dt.date, result, b: np.ndarray, beta: np.ndarray) -> None:
     h = result.active_weights
     problems = [
         f"sum(h) = {h.sum():.2e}" if abs(h.sum()) > TOLERANCE else "",
-        f"beta'h = {beta @ h:.2e}" if beta is not None and abs(beta @ h) > TOLERANCE else "",
+        f"beta'h = {beta @ h:.2e}" if abs(beta @ h) > TOLERANCE else "",
         f"min(w_b + h) = {(b + h).min():.2e}" if (b + h).min() < -TOLERANCE else "",
-        f"ex-ante TE {result.ex_ante_te:.6f} > {target}" if result.ex_ante_te > target + TOLERANCE else "",
+        f"ex-ante TE {result.ex_ante_te:.6f} > {ACTIVE_RISK_TARGET}"
+        if result.ex_ante_te > ACTIVE_RISK_TARGET + TOLERANCE
+        else "",
     ]
     problems = [p for p in problems if p]
     if problems:

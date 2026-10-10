@@ -10,7 +10,7 @@ max hᵀα  s.t.  Σh = 0,  βᵀh = 0,  hᵀVh ≤ 0.05²,  w_b + h ≥ 0
 
 - There is no gamma. The active portfolio is sized to the 5% tracking-error target directly.
 - β = Vb / (bᵀVb) is computed from the same Barra V. It is not Barra's predicted beta.
-- Long-only, fully invested, and zero active beta are locked under `profile: mandate`.
+- The mandate is not configurable: every backtest is long-only, fully invested, zero active beta, and 5% TE.
 
 > **0.3.0 is a breaking rebuild.** The gamma runners (`BacktestRunner`, `BacktestDynamicRunner`, `BacktestCostAwareRunner`), the `run-dynamic` command, the per-year SLURM array, the `predicted_beta` input column, and the constraint list are gone.
 
@@ -61,14 +61,9 @@ You can pass a plain DataFrame or an `AlphaPanel` from `sf_quant.signals` (`buil
 
 ## Factor control
 
-With `factor_control: neutral` (the default), the portfolio is held at exactly zero exposure to every Barra factor no signal is allowed to keep. Allowed factors are free but capped by, in order of strictness:
-- the signals' `Constraints.factor_caps`
-- `factor_bounds` from the config
-- `default_factor_cap`
+With `factor_control: neutral` (the default), the portfolio is held at exactly zero exposure to every Barra factor no signal is allowed to keep. Allowed factors are free, except for any caps the signals set (`Constraints.factor_caps`).
 
 `risk_model` drops exact neutrality and lets the risk model discourage factor bets on its own; it exists for the handoff's factor-control experiment.
-
-A signal can relax zero active beta (`BettingAgainstBeta` does), but only under `profile: experimental`. Under `profile: mandate` the relaxation is ignored with a warning and recorded in `summary.metadata.ignored_relaxations`.
 
 ## Comparing a candidate signal
 
@@ -90,7 +85,7 @@ An alpha formed at the close of t trades at the close of t + `execution_lag_days
 
 Costs are charged on realized turnover (Σ|w_target − w_drifted|) at each bps level in `bps_grid`. They are never part of the optimizer. At about $1M AUM, market impact is negligible and only the spread matters. Spread cost scales with turnover, not fund size. The initial build from cash is not charged.
 
-At our size, the real implementability limit is small positions. `diagnostics` counts positions under `min_position_dollars` and positions worth less than one share.
+At our size, the real implementability limit is small positions. `diagnostics` counts positions worth less than one share at `aum`.
 
 ## Output (`result.save(dir)`)
 
@@ -98,7 +93,7 @@ At our size, the real implementability limit is small positions. `diagnostics` c
 |---|---|
 | `weights.parquet` | Per rebalance and asset: alpha, benchmark, active, and fund weights |
 | `returns.parquet` | Daily portfolio, benchmark, and active returns; active split into factor and specific parts; `net_active_<bps>bps` |
-| `diagnostics.parquet` | Per rebalance: solver status, ex-ante TE, TE shortfall, active beta, transfer coefficient, long-only bound count, turnover, coverage, small-position counts |
+| `diagnostics.parquet` | Per rebalance: solver status, ex-ante TE, TE shortfall, active beta, transfer coefficient, long-only bound count, turnover, coverage, positions under one share |
 | `factor_exposures.parquet` | Per rebalance and factor: active exposure and shadow price (the expected return a neutrality constraint cost) |
 | `factor_returns.parquet` | Each factor's daily contribution to active return |
 | `summary.json` | Realized IR gross and net, TE, breakeven bps, realized/ex-ante TE, factor share of active variance, per-factor contributions and shadow prices, failures, and reproducibility metadata |
@@ -111,9 +106,9 @@ A run raises instead of producing numbers if any of these fails:
 - duplicate (date, barrid) rows, or null or non-finite alphas
 - alpha coverage below `min_alpha_coverage`
 - √(bᵀVb) outside [0.08, 0.40] (the Barra units check)
-- a solution that breaks Σh = 0, βᵀh = 0 (unless relaxed under `experimental`), w ≥ 0, or the TE limit
+- a solution that breaks Σh = 0, βᵀh = 0, w ≥ 0, or the TE limit
 
-Names missing Barra risk data are held at benchmark weight and counted in `n_missing_risk`. Runs stop before `holdout_start` unless `unlock_holdout: true`.
+Names missing Barra risk data are held at benchmark weight and counted in `n_missing_risk`. If a date fails to solve, the previous holdings keep drifting; the failure shows in `diagnostics` and `summary.failed_rebalances`.
 
 ## Development
 

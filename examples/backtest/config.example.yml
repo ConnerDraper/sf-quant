@@ -1,27 +1,16 @@
-# sf-backtester config. Long-only, full investment, and zero active beta are
-# always enforced; under profile: mandate the TE target is locked to 5%.
+# sf-backtester config. The mandate is fixed: long-only, fully invested,
+# zero active beta, 5% tracking error.
 
-name: momentum
+name: momentum                # output folder for the CLI: runs/<name>
 start: 2010-01-01
 end: 2024-12-31
 rebalance: monthly            # monthly | weekly | daily
 execution_lag_days: 1         # alpha formed at close t, traded at close t+1
 
-profile: mandate              # mandate | experimental
-active_risk_target: 0.05      # annualized; locked under profile: mandate
 factor_control: neutral       # neutral (zero exposure to factors no signal may keep) | risk_model
-factor_bounds: {}             # optional caps on |active exposure|, e.g. {USSLOWL_SIZE: 0.10}
-default_factor_cap: null      # cap for factors a signal may keep but gives no cap for
-on_failure: hold_previous     # hold_previous | raise
-
 bps_grid: [0, 5, 10, 20]      # costs charged on realized turnover
-pass_ir: 0.0                  # breakeven cost is where net IR falls to this
-holdout_start: 2025-01-01     # runs stop here unless unlock_holdout: true
-unlock_holdout: false
 min_alpha_coverage: 0.5
-
-aum: 1000000
-min_position_dollars: 100     # smaller positions are flagged in diagnostics
+aum: 1000000                  # positions worth less than one share are flagged
 
 n_workers: 8
 slurm:

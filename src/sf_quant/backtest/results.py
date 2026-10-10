@@ -51,9 +51,7 @@ def build_result(
     n_missing: int,
     config: BacktestConfig,
     data_snapshot: dt.date,
-    holdout_used: bool,
     panel,
-    ignored_relaxations: list[str],
 ) -> BacktestResult:
     diagnostics = (
         pl.DataFrame([s.diagnostics for s in solved])
@@ -76,10 +74,7 @@ def build_result(
         "factors": _factor_summary(factor_returns, factor_exposures, len(returns)),
         "metadata": {
             "config_hash": config.hash(),
-            "profile": config.profile,
             "allowed_factors": sorted(panel.allowed_factors),
-            "ignored_relaxations": ignored_relaxations,
-            "holdout_used": holdout_used,
             "data_snapshot": data_snapshot.isoformat(),
             "git_sha": _git_sha(),
             "packages": {p: _version(p) for p in ("sf-backtester", "sf-quant", "cvxpy", "clarabel", "polars", "numpy")},
@@ -115,8 +110,8 @@ def summarize(returns: pl.DataFrame, diagnostics: pl.DataFrame, config: Backtest
     ok = diagnostics.filter(pl.col("solver_status").is_in(["optimal", "optimal_inaccurate"]))
     mean_ex_ante_te = _mean(ok["ex_ante_te"])
     annual_turnover = diagnostics.filter(~pl.col("initial"))["turnover"].sum() / years
-    # Cost per unit traded at which net IR falls to the passing bar.
-    breakeven = (ann_active - config.pass_ir * te) / annual_turnover * 1e4 if annual_turnover > 0 else math.inf
+    # Cost per unit traded, in bps, at which net active return falls to zero.
+    breakeven = ann_active / annual_turnover * 1e4 if annual_turnover > 0 else math.inf
 
     return {
         "start": returns["date"].min().isoformat(),
