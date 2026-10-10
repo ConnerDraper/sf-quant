@@ -1,6 +1,0 @@
-﻿sf\_quant.data.load\_crsp\_v2\_daily
-====================================
-
-.. currentmodule:: sf_quant.data
-
-.. autofunction:: load_crsp_v2_daily
