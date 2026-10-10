@@ -28,8 +28,6 @@ Data
    get_exposures_columns
    load_covariances_by_date
    get_covariances_columns
-   construct_covariance_matrix
-   construct_factor_model_components
    load_risk_model
    RiskModel
    load_benchmark

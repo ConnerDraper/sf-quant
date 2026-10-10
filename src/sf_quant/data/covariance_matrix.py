@@ -44,8 +44,7 @@ def load_risk_model(date_: dt.date, barrids: list[str]) -> RiskModel:
     """
     Load the Barra risk model for the given assets on one date.
 
-    Unlike :func:`construct_factor_model_components`, this never fills
-    missing risk data with zero. Assets without an exposure row or without a
+    It never fills missing risk data with zero. Assets without an exposure row or without a
     positive specific risk are dropped and listed in ``missing_ids``, so the
     caller decides how to treat them instead of the optimizer seeing them as
     riskless.
@@ -110,137 +109,6 @@ def load_risk_model(date_: dt.date, barrids: list[str]) -> RiskModel:
     )
 
 
-def construct_factor_model_components(
-    date_: dt.date, barrids: list[str]
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Construct the factor model components for the given assets.
-
-    .. warning::
-        Missing specific risk is filled with zero, which makes the asset look
-        riskless to an optimizer, and assets missing from the exposures table
-        are silently dropped. Prefer :func:`load_risk_model`.
-
-    Returns
-    -------
-    tuple of np.ndarray
-        - factor_exposures: shape (N, K)
-        - factor_covariance: shape (K, K), in decimal space
-        - specific_risk: shape (N,), variance in decimal space
-    """
-    exposures = _construct_factor_exposure_matrix(date_, barrids).drop("barrid").to_numpy()
-    
-    factor_cov = _construct_factor_covariance_matrix(date_).drop("factor_1").to_numpy()
-    factor_cov = factor_cov / 100**2
-
-    barrids_df = pl.DataFrame({"barrid": barrids})
-    sr_df = load_assets_by_date(
-        date_, in_universe=False, columns=["date", "barrid", "specific_risk"]
-    )
-    sr_df = barrids_df.join(sr_df, on=["barrid"], how="left").fill_null(0)
-    
-    specific_risk = np.power(sr_df["specific_risk"].to_numpy(), 2) / 100**2
-
-    return exposures, factor_cov, specific_risk
-
-
-def construct_covariance_matrix(date_: dt.date, barrids: list[str]) -> pl.DataFrame:
-    """
-    Construct the asset covariance matrix from a factor model.
-
-    This function builds a covariance matrix for the given assets by
-    combining factor exposures, factor covariances, and specific
-    (idiosyncratic) risks. The resulting covariance matrix can be used
-    as an input to mean-variance optimization.
-
-    Parameters
-    ----------
-    date_ : datetime.date
-        The date for which the covariance matrix is computed.
-    barrids : list of str
-        List of Barrid identifiers for the assets.
-
-    Returns
-    -------
-    pl.DataFrame
-        A square covariance matrix stored in a Polars DataFrame.
-
-        - Rows and columns are indexed by ``barrid``.
-        - Column ``barrid`` lists the asset identifiers.
-        - Each subsequent column corresponds to the covariance of
-          the row asset with the column asset.
-
-    Notes
-    -----
-    The input factor covariance matrix is assumed to be positive
-    semidefinite (PSD).
-
-    Examples
-    --------
-    >>> import sf_quant.data as sfd
-    >>> import datetime as dt
-    >>> date_ = dt.date(2024, 1, 3)
-    >>> barrids = ['USA06Z1', 'USA0771']
-    >>> covariance_matrix = sfd.construct_covariance_matrix(
-    ...     date_=date_,
-    ...     barrids=barrids
-    ... )
-    >>> covariance_matrix
-    shape: (2, 3)
-    ┌─────────┬─────────────┬──────────────┐
-    │ barrid  ┆ USA06Z1     ┆ USA0771      │
-    │ ---     ┆ ---         ┆ ---          │
-    │ str     ┆ f64         ┆ f64          │
-    ╞═════════╪═════════════╪══════════════╡
-    │ USA06Z1 ┆ 3224.338938 ┆ 697.641425   │
-    │ USA0771 ┆ 697.641425  ┆ 11158.366868 │
-    └─────────┴─────────────┴──────────────┘
-    """
-    # Load
-    exposures_matrix = (
-        _construct_factor_exposure_matrix(date_, barrids).drop("barrid").to_numpy()
-    )
-    covariance_matrix = (
-        _construct_factor_covariance_matrix(date_).drop("factor_1").to_numpy()
-    )
-    idio_risk_matrix = (
-        _construct_specific_risk_matrix(date_, barrids).drop("barrid").to_numpy()
-    )
-
-    # Compute covariance matrix
-    covariance_matrix = (
-        exposures_matrix @ covariance_matrix @ exposures_matrix.T + idio_risk_matrix
-    )
-
-    # Put in decimal space
-    covariance_matrix /= 100**2
-
-    # Package
-    covariance_matrix = pl.DataFrame(
-        {
-            "barrid": barrids,
-            **{id: covariance_matrix[:, i] for i, id in enumerate(barrids)},
-        }
-    )
-
-    return covariance_matrix
-
-
-def _construct_factor_exposure_matrix(
-    date_: dt.date, barrids: list[str]
-) -> pl.DataFrame:
-    exp_mat = (
-        load_exposures_by_date(date_)
-        .drop("date")
-        .filter(pl.col("barrid").is_in(barrids))
-        .fill_null(0)
-        .sort("barrid")
-        .select(["barrid"] + factors)
-    )
-
-    return exp_mat
-
-
 def _construct_factor_covariance_matrix(date_: dt.date) -> pl.DataFrame:
     # Load
     fc_df = load_covariances_by_date(date_).drop("date")
@@ -268,31 +136,3 @@ def _construct_factor_covariance_matrix(date_: dt.date) -> pl.DataFrame:
     cov_mat = cov_mat.fill_nan(0)
 
     return cov_mat
-
-
-def _construct_specific_risk_matrix(date_: dt.date, barrids: list[str]) -> pl.DataFrame:
-    # Barrids
-    barrids_df = pl.DataFrame({"barrid": barrids})
-
-    # Load
-    sr_df = load_assets_by_date(
-        date_, in_universe=False, columns=["date", "barrid", "specific_risk"]
-    )
-
-    # Filter
-    sr_df = barrids_df.join(sr_df, on=["barrid"], how="left").fill_null(
-        0
-    )  # ask Brandon about this.
-
-    # Convert vector to diagonal matrix
-    diagonal = np.power(np.diag(sr_df["specific_risk"]), 2)
-
-    # Package
-    risk_matrix = pl.DataFrame(
-        {
-            "barrid": barrids,
-            **{id: diagonal[:, i] for i, id in enumerate(barrids)},
-        }
-    )
-
-    return risk_matrix

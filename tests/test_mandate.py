@@ -208,7 +208,4 @@ def test_alpha_linear_in_beta_is_worthless_under_the_mandate():
     _, B, F, delta, b = make_barra_like()
     alphas = 0.03 * (1 - benchmark_betas(B, F, delta, b))
     mandate = solve(alphas, B, F, delta, b)
-    relaxed = solve(alphas, B, F, delta, b, zero_active_beta=False)
     assert abs(mandate.expected_active_return) < 1e-8
-    assert relaxed.expected_active_return > 1e-4  # positive once beta may move
-    assert relaxed.active_beta < -0.01

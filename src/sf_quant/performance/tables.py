@@ -1,7 +1,6 @@
 import polars as pl
 import polars.selectors as cs
 from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
-from sf_quant.schema.leverage_schema import LeverageSchema
 from sf_quant.schema.drawdown_schema import DrawdownSchema
 
 
@@ -193,75 +192,6 @@ def generate_returns_summary_table(returns: PortfolioRetSchema) -> pl.DataFrame:
         )
         .with_columns(
             pl.col("Mean Return (%)", "Volatility (%)").mul(100)
-        )
-        .with_columns(cs.float().round(2))
-    )
-
-
-def generate_leverage_summary_table(leverage: LeverageSchema) -> pl.DataFrame:
-    """
-    Generate a summary statistics table for portfolio leverage.
-
-    This function calculates summary metrics for portfolio leverage,
-    including mean, min, max, and standard deviation.
-
-    Parameters
-    ----------
-    leverage : LeverageSchema
-        Portfolio leverage validated against LeverageSchema.
-        Must include the following columns:
-
-        - ``date`` (date): The observation date.
-        - ``leverage`` (float): Daily portfolio leverage.
-
-    Returns
-    -------
-    pl.DataFrame
-        A single-row DataFrame containing leverage summary statistics:
-
-        - ``Count`` (int): Number of days in the sample.
-        - ``Mean Leverage`` (float): Average leverage.
-        - ``Min Leverage`` (float): Minimum leverage.
-        - ``Max Leverage`` (float): Maximum leverage.
-        - ``Std Leverage`` (float): Standard deviation of leverage.
-
-    Notes
-    -----
-    - Leverage values are not annualized or converted to percentages.
-    - Leverage = 1.0 indicates fully invested with no leverage or shorting.
-    - Leverage > 1.0 indicates use of margin or shorting.
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> import sf_quant.performance as sfp
-    >>> import datetime as dt
-    >>> weights = pl.DataFrame(
-    ...     {
-    ...         'date': [dt.date(2024, 1, 2), dt.date(2024, 1, 2), dt.date(2024, 1, 3), dt.date(2024, 1, 3)],
-    ...         'barrid': ['USA06Z1', 'USA0771', 'USA06Z1', 'USA0771'],
-    ...         'weight': [0.5, 0.5, 0.3, 0.7]
-    ...     }
-    ... )
-    >>> leverage = sfp.generate_leverage_from_weights(weights)
-    >>> summary = sfp.generate_leverage_summary_table(leverage)
-    >>> summary
-    shape: (1, 5)
-    ┌───────┬────────────────┬──────────────┬──────────────┬──────────────┐
-    │ Count ┆ Mean Leverage  ┆ Min Leverage ┆ Max Leverage ┆ Std Leverage │
-    │ ---   ┆ ---            ┆ ---          ┆ ---          ┆ ---          │
-    │ u32   ┆ f64            ┆ f64          ┆ f64          ┆ f64          │
-    ╞═══════╪════════════════╪══════════════╪══════════════╪══════════════╡
-    │ 2     ┆ 1.0            ┆ 1.0          ┆ 1.0          ┆ 0.0          │
-    └───────┴────────────────┴──────────────┴──────────────┴──────────────┘
-    """
-    return (
-        leverage.select(
-            pl.col("date").n_unique().alias("Count"),
-            pl.col("leverage").mean().alias("Mean Leverage"),
-            pl.col("leverage").min().alias("Min Leverage"),
-            pl.col("leverage").max().alias("Max Leverage"),
-            pl.col("leverage").std().alias("Std Leverage"),
         )
         .with_columns(cs.float().round(2))
     )

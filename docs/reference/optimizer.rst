@@ -18,11 +18,3 @@ Optimizer
    equality_direction
    active_variance
    covariance_times
-   mve_optimizer
-   dynamic_mve_optimizer
-   FullInvestment
-   ZeroInvestment
-   LongOnly
-   NoBuyingOnMargin
-   UnitBeta
-   ZeroBeta

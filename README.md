@@ -1,12 +1,26 @@
 # Silver Fund Quant
 
-A quantitative finance library for the BYU Silver Fund quant team. Provides tools for data loading, portfolio optimization, backtesting, performance analysis, and signal research — all built on Polars DataFrames.
+A quantitative finance library for the BYU Silver Fund quant team. Provides tools for data loading, signal construction, portfolio optimization, performance analysis, and signal research — all built on Polars DataFrames. Backtests live in [sf-backtester](https://github.com/ConnerDraper/sf-backtester).
 
 ## Installation
 
 ```bash
 pip install sf-quant
 ```
+
+### Upgrading from 0.2
+
+0.3.0 removes the gamma-based tools, which solved a different problem than the fund's mandate:
+- `sf_quant.backtester` (`backtest_sequential`, `backtest_parallel`, `dynamic_backtest_parallel`)
+- `mve_optimizer` and `dynamic_mve_optimizer`
+- the constraint classes (`LongOnly`, `ZeroBeta`, …)
+- `sf_quant.costs`
+- `construct_factor_model_components` and `construct_covariance_matrix`
+- the leverage tools (`generate_leverage_from_weights`, its chart and summary table): the fund is always fully invested and long-only, so leverage is always 1
+- `generate_alpha_ics` and `generate_ic_chart`, which measured IC against total returns; use `sf_quant.signals.estimate_ic`, which measures it against the return the fund can actually earn
+- `load_optimal_weights`
+
+Use `sf_quant.optimizer.mandate_optimizer`, `sf_quant.data.load_risk_model`, and sf-backtester's `run_backtest` instead. To keep running old notebooks unchanged, pin `sf-quant<0.3`.
 
 ## Environment Configuration
 
@@ -42,60 +56,38 @@ This will override any values set via environment variables.
 
 ## Quick Start
 
-A complete workflow: load asset data, build a momentum alpha signal, construct a covariance matrix, and optimize a portfolio.
+Build alphas from a signal, then solve the fund's mandate problem for one date. For full walk-forward backtests with returns, costs, and diagnostics, use [sf-backtester](https://github.com/ConnerDraper/sf-backtester).
 
 ```python
-import sf_quant.data as sfd
-import sf_quant.optimizer as sfo
 import datetime as dt
+
+import numpy as np
 import polars as pl
+import sf_quant.optimizer as sfo
+import sf_quant.signals as sg
+from sf_quant.data import SfQuantMarketData
 
-# 1. Load asset data
-df = (
-    sfd.load_assets(
-        start=dt.date(2024, 1, 1),
-        end=dt.date(2024, 12, 31),
-        columns=["date", "barrid", "price", "return", "specific_risk", "predicted_beta"],
-        in_universe=True,
-    )
-    .with_columns(pl.col("return", "specific_risk").truediv(100))
-    .sort("barrid", "date")
+data = SfQuantMarketData()
+
+# 1. Alphas: the score is residualized against Barra factors; alpha = IC * specific risk * Z
+panel = sg.build_alpha(sg.IdiosyncraticMomentum(), data, dt.date(2023, 1, 1), dt.date(2024, 12, 31))
+
+# 2. Solve the mandate problem on the last formation date
+date_ = panel.alphas["date"].max()
+alpha = dict(panel.alphas.filter(pl.col("date") == date_).select("barrid", "alpha").iter_rows())
+bench = dict(data.benchmark_weights(date_, date_).select("barrid", "weight").iter_rows())
+rm = data.risk_model(date_, sorted(bench))
+
+result = sfo.mandate_optimizer(
+    ids=rm.ids,
+    alphas=np.array([alpha.get(x, 0.0) for x in rm.ids]),
+    factor_exposures=rm.factor_exposures,
+    factor_covariance=rm.factor_covariance,
+    specific_variance=rm.specific_variance,
+    benchmark_weights=np.array([bench[x] for x in rm.ids]),
+    target_active_risk=0.05,
 )
-
-# 2. Build a momentum alpha signal
-df_clean = (
-    df
-    .with_columns(
-        pl.col("return").log1p().rolling_sum(window_size=230).shift(22).over("barrid").alias("momentum"),
-    )
-    .with_columns(
-        pl.col("momentum").sub(pl.col("momentum").mean()).truediv(pl.col("momentum").std()).over("date").alias("score")
-    )
-    .with_columns(
-        pl.lit(0.05).mul(pl.col("score")).mul(pl.col("specific_risk")).alias("alpha")
-    )
-    .drop_nulls()
-    .sort("barrid")
-)
-
-# 3. Construct the covariance matrix
-date_ = df_clean["date"].last()
-barrids = df_clean["barrid"].to_list()
-
-covariance_matrix = (
-    sfd.construct_covariance_matrix(date_=date_, barrids=barrids)
-    .drop("barrid").to_numpy()
-)
-
-# 4. Optimize the portfolio
-weights = sfo.mve_optimizer(
-    ids=barrids,
-    alphas=df_clean["alpha"].to_list(),
-    betas=df_clean["predicted_beta"].to_list(),
-    covariance_matrix=covariance_matrix,
-    constraints=[sfo.ZeroBeta()],
-    gamma=100,
-)
+result.active_weights, result.ex_ante_te
 ```
 
 ## Modules
@@ -112,7 +104,6 @@ Load financial data as Polars DataFrames. Use `get_*_columns()` to inspect avail
 | `load_crsp_monthly()` / `load_crsp_v2_monthly()` | CRSP monthly stock data |
 | `load_exposures()` / `load_exposures_by_date()` | Barra factor exposures (77+ factors) |
 | `load_covariances_by_date()` | Factor covariance matrix for a date |
-| `construct_covariance_matrix()` | Build an asset-level covariance matrix from the factor model |
 | `load_risk_model()` | Barra B, F, and specific variance for one date (decimal, annualized), reporting names with missing risk data |
 | `load_benchmark()` / `load_benchmark_returns()` | Benchmark weights and returns |
 | `load_factors()` / `get_factor_names()` | Barra factor returns and metadata |
@@ -152,21 +143,8 @@ result.active_weights, result.ex_ante_te, result.status
 Optional arguments:
 - `neutral_factors` holds factors at exactly zero active exposure. Redundant rows, like the country factor that duplicates Σh = 0, are dropped automatically.
 - `factor_bounds` caps them.
-- `zero_active_beta=False` relaxes the beta constraint, for experimental runs.
 
 `result.factor_shadow_prices` reports what each neutrality constraint costs in expected return.
-
-`mve_optimizer` and `dynamic_mve_optimizer` (gamma-based) and the constraint
-classes below are deprecated.
-
-| Constraint | Effect |
-|---|---|
-| `FullInvestment()` | Weights sum to 1 |
-| `ZeroInvestment()` | Weights sum to 0 |
-| `LongOnly()` | No short positions |
-| `NoBuyingOnMargin()` | Weights sum to at most 1 |
-| `UnitBeta()` | Portfolio beta equals 1 |
-| `ZeroBeta()` | Portfolio beta equals 0 |
 
 ### `sf_quant.signals`
 
@@ -191,24 +169,9 @@ loss.table                                                   # return given up t
   - `IdiosyncraticMomentum`
   - `ShortTermReversal`
   - `IndustryMomentum` (keeps industries)
-  - `BettingAgainstBeta` (keeps `USSLOWL_BETA`; relaxes zero active beta, so it runs only under `profile: experimental`)
+  - `BettingAgainstBeta` (keeps `USSLOWL_BETA`). A worked example of a signal the mandate erases: any alpha linear in beta earns exactly zero under full investment and zero active beta.
 
 `sf_quant.testing.synthetic_market` gives a Barra-shaped market with planted effects for tests.
-
-### `sf_quant.backtester`
-
-Deprecated. Use [sf-backtester](https://github.com/ConnerDraper/sf-backtester),
-which runs `mandate_optimizer` and reports returns, costs, and diagnostics.
-
-```python
-import sf_quant.backtester as sfb
-
-# Sequential (single core)
-portfolio = sfb.backtest_sequential(data=df, constraints=constraints, gamma=2)
-
-# Parallel (multi-core via Ray)
-portfolio = sfb.backtest_parallel(data=df, constraints=constraints, gamma=2, n_cpus=4)
-```
 
 ### `sf_quant.performance`
 
@@ -218,16 +181,12 @@ Compute and visualize portfolio performance metrics.
 |---|---|
 | `generate_returns_from_weights()` | Portfolio returns from weight history |
 | `generate_multi_returns_from_weights()` | Total, benchmark, and active returns |
-| `generate_leverage_from_weights()` | Sum of absolute weights over time |
 | `generate_drawdown_from_returns()` | Drawdown from peak |
 | `generate_returns_summary_table()` | Mean return, volatility, Sharpe, total return |
-| `generate_alpha_ics()` | Information coefficients between signals and realized returns |
 | `get_turnover_stats()` | Rolling turnover statistics |
 | `generate_returns_chart()` | Plot cumulative returns |
 | `generate_multi_returns_chart()` | Plot total/benchmark/active returns |
-| `generate_leverage_chart()` | Plot leverage over time |
 | `generate_drawdown_chart()` | Plot drawdowns |
-| `generate_ic_chart()` | Plot information coefficients |
 | `plot_turnover()` | Plot portfolio turnover |
 
 ### `sf_quant.research`

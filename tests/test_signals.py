@@ -55,10 +55,8 @@ def test_factor_sets_partition_the_barra_model():
 
 def test_constraints_combine_to_the_tightest():
     a = sg.Constraints(factor_caps={"X": 0.10, "Y": 0.05})
-    b = sg.Constraints(factor_caps={"X": 0.02}, zero_active_beta=False)
-    combined = a.combine(b)
-    assert combined.factor_caps == {"X": 0.02, "Y": 0.05}
-    assert combined.zero_active_beta is False
+    b = sg.Constraints(factor_caps={"X": 0.02})
+    assert a.combine(b).factor_caps == {"X": 0.02, "Y": 0.05}
 
 
 @pytest.mark.parametrize(
@@ -157,7 +155,8 @@ def test_duplicate_signals_split_the_weight(market):
     assert set(last["signal"]) == {"Planted", "Planted_2"}
 
 
-def test_composite_carries_allowances_and_relaxations(market):
-    panel = sg.build_composite([sg.IndustryMomentum(), sg.BettingAgainstBeta()], market, *span(market))
+def test_composite_carries_the_union_of_allowances(market):
+    capped = sg.IndustryMomentum(constraints=sg.Constraints(factor_caps={"USSLOWL_BANKS": 0.02}))
+    panel = sg.build_composite([capped, sg.BettingAgainstBeta()], market, *span(market))
     assert panel.allowed_factors == sg.INDUSTRY_FACTORS | {"USSLOWL_BETA"}
-    assert panel.constraints.zero_active_beta is False
+    assert panel.constraints.factor_caps == {"USSLOWL_BANKS": 0.02}

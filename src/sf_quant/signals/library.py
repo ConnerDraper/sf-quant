@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import polars as pl
 
 from sf_quant.data.market import MarketData
 from sf_quant.optimizer.mandate import benchmark_betas
 
-from .base import INDUSTRY_FACTORS, Constraints, Signal
+from .base import INDUSTRY_FACTORS, Signal
 
 
 def _history_start(first: dt.date, trading_days: int) -> dt.date:
@@ -87,14 +87,15 @@ class BettingAgainstBeta(Signal):
     Minus each stock's beta to the benchmark, from the same risk model the
     optimizer uses (beta = Vb / b'Vb).
 
-    An alpha linear in beta is worth exactly zero under the mandate (sum(h)
-    = 0 and beta'h = 0), so this signal relaxes zero active beta and only
-    runs under profile: experimental. Without leverage, its low-beta tilt
-    mostly shows up as negative market beta.
+    A worked example of a signal the mandate erases. Any alpha linear in
+    beta earns exactly zero under sum(h) = 0 and beta'h = 0, so this score
+    is worth roughly nothing to the fund; only its nonlinear part, or where
+    it disagrees with the risk model's beta, can survive. The low-beta
+    premium is paid for leverage, which a fully invested, beta-locked fund
+    can't use.
     """
 
     allowed_factors: frozenset[str] = frozenset({"USSLOWL_BETA"})
-    constraints: Constraints = field(default_factory=lambda: Constraints(zero_active_beta=False))
 
     def compute(self, data: MarketData, universe: pl.DataFrame) -> pl.DataFrame:
         dates = universe["date"].unique().sort().to_list()

@@ -23,22 +23,19 @@ NO_FACTORS: frozenset[str] = frozenset()
 @dataclass(frozen=True)
 class Constraints:
     """
-    Portfolio constraints a signal brings into the composite.
-
-    Under ``profile: mandate`` these can only add to the fund's constraints:
-    ``zero_active_beta=False`` is a relaxation honored only under
-    ``profile: experimental``.
+    Portfolio constraints a signal brings into the composite. They only add
+    to the fund's mandate (long-only, fully invested, zero active beta, 5%
+    tracking error), which always applies.
     """
 
     factor_caps: Mapping[str, float] = field(default_factory=dict)  # max |active exposure| per factor
-    zero_active_beta: bool = True
 
     def combine(self, other: Constraints) -> Constraints:
-        """Constraints for a composite: the tighter cap per factor; zero beta unless a signal relaxes it."""
+        """Constraints for a composite: the tighter cap per factor."""
         caps_ = dict(self.factor_caps)
         for name, cap in other.factor_caps.items():
             caps_[name] = min(cap, caps_.get(name, cap))
-        return Constraints(caps_, self.zero_active_beta and other.zero_active_beta)
+        return Constraints(caps_)
 
 
 def caps(factor_set: Iterable[str], cap: float) -> dict[str, float]:
