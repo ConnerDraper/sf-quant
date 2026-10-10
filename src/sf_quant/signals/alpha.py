@@ -1,4 +1,4 @@
-"""From raw signal scores to Grinold-Kahn alphas, and what orthogonalization costs.
+"""From raw signal scores to Grinold-Kahn alphas.
 
 For a signal (or composite) allowed to keep the factor set A:
 
@@ -22,9 +22,8 @@ import polars as pl
 
 from sf_quant.data.covariance_matrix import RiskModel
 from sf_quant.data.market import MarketData, rebalance_dates, trading_days
-from sf_quant.optimizer.mandate import active_variance, benchmark_betas, equality_direction
 
-from .base import ALL_FACTORS, NO_FACTORS, Constraints, Signal
+from .base import NO_FACTORS, Constraints, Signal
 
 HORIZON = {"monthly": 21, "weekly": 5, "daily": 1}
 
@@ -200,88 +199,6 @@ def build_alpha(
         "date", "barrid", (ic * pl.col("sigma") * pl.col("z") * np.sqrt(252 / horizon)).alias("alpha")
     )
     return AlphaPanel(alphas, signal.allowed_factors, signal.constraints)
-
-
-@dataclass(frozen=True)
-class FactorLoss:
-    """What a signal's raw score earns from each Barra factor, and its IC before and after residualizing."""
-
-    table: pl.DataFrame  # factor, allowed, annual_return, t_stat, share
-    raw_ic: float  # raw score vs. specific + all factor returns
-    residual_ic: float  # residualized score vs. specific + allowed factor returns
-
-
-def factor_loss(
-    signal: Signal,
-    data: MarketData,
-    start: dt.date,
-    end: dt.date,
-    rebalance: str = "monthly",
-    lag: int = 1,
-    target_active_risk: float = 0.05,
-) -> FactorLoss:
-    """
-    Split the raw signal's return into each Barra factor's part plus the specific part.
-
-    Each formation date, the raw (not residualized) score defines alpha =
-    specific risk * Z and the mandate's closed-form direction (sum(h) = 0,
-    beta'h = 0, no long-only), scaled to ``target_active_risk``. Over the
-    forecast window its return is sum_k (B'h)_k f_k plus h'u. The factor
-    rows show what orthogonalizing against each factor gives up; ``share``
-    is relative to the total.
-    """
-    horizon = HORIZON[rebalance]
-    days, ctxs = contexts(data, start, end, rebalance)
-    scores = signal.compute(data, universe_frame(ctxs))
-    raw = standardize(scores)
-    names = ctxs[0].rm.factor_names
-
-    windows = {c.date: days[c.index + lag + 1 : c.index + lag + 1 + horizon] for c in ctxs}
-    ctxs_with_window = [c for c in ctxs if len(windows[c.date]) == horizon]
-    first, last = windows[ctxs_with_window[0].date][0], windows[ctxs_with_window[-1].date][-1]
-    u_all = data.specific_returns(first, last, sorted({x for c in ctxs for x in c.rm.ids})).sort("date")
-    f_all = data.factor_returns(first, last).sort("date")
-
-    rows = []
-    for ctx in ctxs_with_window:
-        window = windows[ctx.date]
-        rm = ctx.rm
-        z = dict(zip(*raw.filter(pl.col("date") == ctx.date).select("barrid", "z").to_dict(as_series=False).values()))
-        alpha = np.sqrt(rm.specific_variance) * np.array([z.get(x, 0.0) for x in rm.ids])
-        if not np.any(alpha):
-            continue
-        beta = benchmark_betas(rm.factor_exposures, rm.factor_covariance, rm.specific_variance, ctx.benchmark / ctx.benchmark.sum())
-        d = equality_direction(alpha, rm.factor_exposures, rm.factor_covariance, rm.specific_variance, np.vstack([np.ones_like(beta), beta]))
-        h = d * target_active_risk / np.sqrt(active_variance(d, rm.factor_exposures, rm.factor_covariance, rm.specific_variance))
-
-        u = _slice(u_all, window[0], window[-1]).group_by("barrid").agg(pl.col("specific_return").sum())
-        u = dict(zip(u["barrid"], u["specific_return"]))
-        f = _slice(f_all, window[0], window[-1]).select(names).sum().to_numpy().ravel()
-        contributions = (rm.factor_exposures.T @ h) * f
-        rows.append([*contributions, h @ np.array([u.get(x, 0.0) for x in rm.ids])])
-
-    m = np.array(rows) * (252 / horizon)
-    mean, std = m.mean(axis=0), m.std(axis=0, ddof=1)
-    total = mean.sum()
-    table = pl.DataFrame(
-        {
-            "factor": [*names, "specific"],
-            "allowed": [n in signal.allowed_factors for n in names] + [True],
-            "annual_return": mean,
-            "t_stat": mean / std * np.sqrt(len(m)),
-            "share": mean / total if total else np.full(len(mean), np.nan),
-        }
-    ).sort(pl.col("annual_return").abs(), descending=True)
-
-    all_factors = frozenset(names) | ALL_FACTORS
-    raw_target = target_returns(data, days, ctxs, horizon, lag, all_factors)
-    residual = residual_scores(scores, ctxs, signal.allowed_factors)
-    own_target = target_returns(data, days, ctxs, horizon, lag, signal.allowed_factors)
-    return FactorLoss(
-        table=table,
-        raw_ic=float(estimate_ic(raw, raw_target)["ic"].mean()),
-        residual_ic=float(estimate_ic(residual, own_target)["ic"].mean()),
-    )
 
 
 def _slice(df: pl.DataFrame, start: dt.date, end: dt.date) -> pl.DataFrame:

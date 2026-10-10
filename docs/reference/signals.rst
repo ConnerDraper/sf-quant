@@ -23,8 +23,8 @@ Signals
    build_alpha
    build_composite
    combination_weights
-   factor_loss
-   FactorLoss
+   factor_report
+   FactorReport
    estimate_ic
    standardize
    residualize

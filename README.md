@@ -158,8 +158,9 @@ data = SfQuantMarketData()
 signals = [sg.IdiosyncraticMomentum(), sg.ShortTermReversal(), sg.IndustryMomentum()]
 
 panel = sg.build_composite(signals, data, start, end)        # alphas + allowed factors + constraints
-loss = sg.factor_loss(sg.IdiosyncraticMomentum(), data, start, end)
-loss.table                                                   # return given up to each Barra factor
+report = sg.factor_report(sg.IdiosyncraticMomentum(), data, start, end)
+report.table                                                 # return and risk by Barra factor, before and after orthogonalizing
+report.plot()                                                # the same, as charts
 ```
 
 - **Allowed factors.** Each `Signal` declares the Barra factors it may keep, with `NO_FACTORS` as the default. Sets compose: `ALL_FACTORS`, `STYLE_FACTORS`, `INDUSTRY_FACTORS`, `COUNTRY_FACTOR`, e.g. `STYLE_FACTORS | {"USSLOWL_BETA"}`. Scores are residualized against every other factor.

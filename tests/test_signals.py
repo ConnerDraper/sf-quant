@@ -1,4 +1,4 @@
-"""Signals, residualization, targets, factor loss, and the composite."""
+"""Signals, residualization, targets, the factor report, and the composite."""
 
 from dataclasses import dataclass
 
@@ -112,13 +112,48 @@ def test_industry_momentum_ic_comes_from_its_industries(market):
     assert with_industries > 0.05
 
 
-def test_factor_loss_attributes_industry_momentum_to_industries(market):
-    loss = sg.factor_loss(sg.IndustryMomentum(), market, *span(market))
-    table = loss.table
-    assert table["share"].sum() == pytest.approx(1.0)
-    industry_share = table.filter(pl.col("factor").is_in(INDUSTRIES))["share"].sum()
-    assert industry_share > 0.6
-    assert table.filter(pl.col("factor").is_in(INDUSTRIES))["allowed"].all()
+@pytest.fixture(scope="module")
+def industry_report(market):
+    return sg.factor_report(sg.IndustryMomentum(), market, *span(market))
+
+
+def test_factor_report_shares_add_to_one(industry_report):
+    table = industry_report.table
+    for p in ("before", "after"):
+        for share in ("return_share", "ex_ante_risk_share", "realized_risk_share"):
+            assert table[f"{share}_{p}"].sum() == pytest.approx(1.0)
+
+
+def test_factor_report_industry_momentum_keeps_only_its_industries(industry_report):
+    table = industry_report.table
+    industries = table.filter(pl.col("factor").is_in(INDUSTRIES))
+    assert not industries["removed"].any()
+    assert industries["return_share_before"].sum() > 0.6
+    assert industries["return_share_after"].sum() > 0.6
+    # Every other factor is held neutral after orthogonalizing, so it earns nothing.
+    removed = table.filter(pl.col("removed"))
+    assert removed["annual_return_after"].abs().max() < 1e-10
+    assert removed["ex_ante_risk_share_after"].abs().max() < 1e-10
+
+
+def test_factor_report_residual_signal_is_all_specific_after(market):
+    start = market.days[260]
+    report = sg.factor_report(sg.IdiosyncraticMomentum(), market, start, market.days[-1])
+    table = report.table
+    factors = table.filter(pl.col("factor") != "specific")
+    assert factors["annual_return_after"].abs().max() < 1e-10
+    specific = table.filter(pl.col("factor") == "specific")
+    assert specific["ex_ante_risk_share_after"].item() == pytest.approx(1.0)
+    assert specific["realized_risk_share_after"].item() == pytest.approx(1.0)
+
+
+def test_factor_report_plot_writes_a_file(industry_report, tmp_path):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    path = tmp_path / "report.png"
+    industry_report.plot(file_name=str(path))
+    assert path.stat().st_size > 0
 
 
 def test_combination_weights_math():

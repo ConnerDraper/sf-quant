@@ -8,11 +8,12 @@ mandate optimizer.
 - Each signal declares the Barra factors it may keep (``allowed_factors``);
   its score is residualized against all others.
 - :func:`build_alpha` makes single-signal alphas, :func:`build_composite`
-  combines signals with estimated ICs, and :func:`factor_loss` shows what
-  orthogonalizing against each factor gives up.
+  combines signals with estimated ICs, and :func:`factor_report` breaks a
+  signal's return and risk into Barra factors, before and after
+  orthogonalizing.
 """
 
-from .alpha import AlphaPanel, FactorLoss, build_alpha, estimate_ic, factor_loss, residualize, standardize
+from .alpha import AlphaPanel, build_alpha, estimate_ic, residualize, standardize
 from .base import (
     ALL_FACTORS,
     COUNTRY_FACTOR,
@@ -25,6 +26,7 @@ from .base import (
 )
 from .composite import build_composite, combination_weights
 from .library import BettingAgainstBeta, IdiosyncraticMomentum, IndustryMomentum, ShortTermReversal
+from .report import FactorReport, factor_report
 
 __all__ = [
     "ALL_FACTORS",
@@ -35,7 +37,7 @@ __all__ = [
     "AlphaPanel",
     "BettingAgainstBeta",
     "Constraints",
-    "FactorLoss",
+    "FactorReport",
     "IdiosyncraticMomentum",
     "IndustryMomentum",
     "ShortTermReversal",
@@ -45,7 +47,7 @@ __all__ = [
     "combination_weights",
     "caps",
     "estimate_ic",
-    "factor_loss",
+    "factor_report",
     "residualize",
     "standardize",
 ]
