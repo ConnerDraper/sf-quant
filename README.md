@@ -178,6 +178,8 @@ report.plot()                                                # the same, as char
 
 Compute and visualize portfolio performance metrics.
 
+These functions take a weight for **every day**: weights dated t earn day t+1's return, with no drift between dates. To backtest a strategy that sets target weights on rebalance dates and lets holdings drift in between (with execution lag, turnover, and costs), use sf-backtester's `run_backtest`.
+
 | Function | Description |
 |---|---|
 | `generate_returns_from_weights()` | Portfolio returns from weight history |

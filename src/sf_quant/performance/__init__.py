@@ -3,6 +3,9 @@ The ``performance`` module provides tools for evaluating and summarizing
 portfolio and strategy performance. It exposes a clean public API for
 calculating returns, risk metrics, and visualizing performance, while keeping
 internal computation details hidden.
+
+Return functions expect a weight for every day (no drift between dates). For
+rebalance-date targets with drift, execution lag, and costs, use sf-backtester.
 """
 
 from .returns import generate_returns_from_weights, generate_multi_returns_from_weights
