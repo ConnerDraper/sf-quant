@@ -74,7 +74,7 @@ from sf_quant.signals import IdiosyncraticMomentum, ShortTermReversal
 c = compare(baseline=[IdiosyncraticMomentum()], candidate=ShortTermReversal(), config=cfg)
 c.summary              # IR for baseline, baseline + candidate, candidate alone
 c.ir_gain              # the answer: how much the candidate improves the fund's IR
-c.factor_loss.table    # what orthogonalizing the candidate against each factor gave up
+c.factor_report.table  # the candidate's return and risk by Barra factor, before and after orthogonalizing
 ```
 
 ## Timing

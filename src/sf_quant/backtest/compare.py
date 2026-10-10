@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import polars as pl
 from sf_quant.data import MarketData, SfQuantMarketData
-from sf_quant.signals import FactorLoss, Signal, build_composite, factor_loss
+from sf_quant.signals import FactorReport, Signal, build_composite, factor_report
 
 from sf_backtester.backtest import run_backtest
 from sf_backtester.config import BacktestConfig
@@ -29,7 +29,7 @@ class Comparison:
     # constraints. Only meaningful when the baseline and candidate IRs are positive.
     additivity_gap: float
     candidate_in_composite: pl.DataFrame  # the candidate's IC, weight, and marginal IC each date
-    factor_loss: FactorLoss
+    factor_report: FactorReport  # the candidate's return and risk by Barra factor
     results: dict[str, BacktestResult]
 
 
@@ -75,6 +75,6 @@ def compare(
         ir_gain=ir["with_candidate"] - ir_baseline,
         additivity_gap=ir["with_candidate"] ** 2 - ir_baseline**2 - ir["candidate"] ** 2,
         candidate_in_composite=panels["with_candidate"].diagnostics.filter(pl.col("signal") == label),
-        factor_loss=factor_loss(candidate, *window),
+        factor_report=factor_report(candidate, *window),
         results=results,
     )

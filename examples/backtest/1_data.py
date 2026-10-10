@@ -1,8 +1,8 @@
 """Build an idiosyncratic momentum alpha panel with the sf-quant signal library.
 
 The score is residualized against every Barra factor, and alpha =
-IC * specific risk * Z (annualized). factor_loss shows what removing each
-factor gave up.
+IC * specific risk * Z (annualized). factor_report shows the signal's return
+and risk by Barra factor, before and after orthogonalizing.
 """
 
 import datetime as dt
@@ -17,6 +17,6 @@ signal = sg.IdiosyncraticMomentum()
 panel = sg.build_alpha(signal, data, start, end, rebalance="monthly")
 panel.alphas.write_parquet("momentum_alphas.parquet")
 
-loss = sg.factor_loss(signal, data, start, end)
-print(loss.table)
-print(f"IC raw {loss.raw_ic:.3f}, residual {loss.residual_ic:.3f}")
+report = sg.factor_report(signal, data, start, end)
+print(report.table)
+report.plot(file_name="momentum_factors.png")
