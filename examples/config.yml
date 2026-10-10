@@ -1,7 +1,8 @@
-# sf_quant.backtest config. The mandate is fixed: long-only, fully invested,
+# Shared settings for every example script (and the sf_backtest command).
+# The mandate is fixed: long-only, fully invested,
 # zero active beta, 5% tracking error.
 
-name: momentum                # output folder for the CLI: runs/<name>
+name: low_specific_vol        # names the backtest output folder
 start: 2010-01-01
 end: 2024-12-31
 rebalance: monthly            # monthly | weekly | daily

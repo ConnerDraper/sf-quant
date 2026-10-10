@@ -32,7 +32,7 @@ result.diagnostics
 result.save("runs/momentum/")
 ```
 
-See [config.example.yml](../../../examples/backtest/config.example.yml) for every option and [examples/backtest/](../../../examples/backtest/) for an end-to-end momentum run.
+See [examples/config.yml](../../../examples/config.yml) for every option and [examples/](../../../examples/) for scripts that write, research, backtest, and compare a signal.
 
 ## Layout
 

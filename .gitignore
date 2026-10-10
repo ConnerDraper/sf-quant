@@ -21,6 +21,7 @@ docs/reference/*/
 /data
 *.parquet
 runs/
+examples/out/
 
 # Scratch work (repo root only, so real test files are never hidden)
 /.archive

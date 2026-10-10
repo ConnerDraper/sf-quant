@@ -194,7 +194,7 @@ sf_backtest run config.yml --alphas alphas.parquet              # in this proces
 sf_backtest submit config.yml --alphas alphas.parquet [--dry-run] # one SLURM node
 ```
 
-See the [module README](src/sf_quant/backtest/README.md) for config, timing, costs, outputs, and invariants, and [examples/backtest/](examples/backtest/) for an end-to-end momentum run.
+See the [module README](src/sf_quant/backtest/README.md) for config, timing, costs, outputs, and invariants, and [examples/](examples/) for scripts that write, research, backtest, and compare a signal.
 
 ### `sf_quant.performance`
 
