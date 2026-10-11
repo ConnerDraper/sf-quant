@@ -45,23 +45,10 @@ def load_assets(start: dt.date, end: dt.date, columns: list[str], in_universe: b
     ... )
     >>> df.head()
     """
+    frame = assets_table.scan().filter(pl.col("date").is_between(start, end))
     if in_universe:
-        return (
-            assets_table.scan()
-            .filter(pl.col("date").is_between(start, end), pl.col("in_universe"))
-            .sort(["barrid", "date"])
-            .select(columns)
-            .collect()
-        )
-
-    else:
-        return (
-            assets_table.scan()
-            .filter(pl.col("date").is_between(start, end))
-            .sort(["barrid", "date"])
-            .select(columns)
-            .collect()
-        )
+        frame = frame.filter(pl.col("in_universe"))
+    return frame.sort(["barrid", "date"]).select(columns).collect()
 
 
 def load_assets_by_date(date_: dt.date, in_universe: bool, columns: list[str]) -> pl.DataFrame:
@@ -109,22 +96,12 @@ def load_assets_by_date(date_: dt.date, in_universe: bool, columns: list[str]) -
 @lru_cache(maxsize=64)
 def _assets_by_date(date_: dt.date, in_universe: bool, columns: tuple[str, ...]) -> pl.DataFrame:
     """Cached body of :func:`load_assets_by_date` (``columns`` made hashable)."""
+    # Scan the one year's file, not every year: the date pins it. The two
+    # branches used to disagree about this, and only this one is right.
+    frame = assets_table.scan(date_.year).filter(pl.col("date").eq(date_))
     if in_universe:
-        return (
-            assets_table.scan()
-            .filter(pl.col("date").eq(date_), pl.col("in_universe"))
-            .sort(["barrid", "date"])
-            .select(list(columns))
-            .collect()
-        )
-    else:
-        return (
-            assets_table.scan(date_.year)
-            .filter(pl.col("date").eq(date_))
-            .sort(["barrid", "date"])
-            .select(list(columns))
-            .collect()
-        )
+        frame = frame.filter(pl.col("in_universe"))
+    return frame.sort(["barrid", "date"]).select(list(columns)).collect()
 
 
 register_cache(_assets_by_date.cache_clear)

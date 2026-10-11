@@ -50,26 +50,12 @@ def load_exposures(start: dt.date, end: dt.date, in_universe: bool, columns: lis
     ... )
     >>> df.head()
     """
+    frame = exposures_table.scan().filter(pl.col("date").is_between(start, end))
     if in_universe:
-        return (
-            assets_table.scan()
-            .filter(pl.col("in_universe"))
-            .select("date", "barrid")
-            .join(other=exposures_table.scan(), on=["date", "barrid"], how="left")
-            .filter(pl.col("date").is_between(start, end))
-            .select(columns)
-            .sort("barrid", "date")
-            .collect()
-        )
-
-    else:
-        return (
-            exposures_table.scan()
-            .filter(pl.col("date").is_between(start, end))
-            .select(columns)
-            .sort("barrid", "date")
-            .collect()
-        )
+        # Restrict to universe members by joining the assets table's flag.
+        universe = assets_table.scan().filter(pl.col("in_universe")).select("date", "barrid")
+        frame = universe.filter(pl.col("date").is_between(start, end)).join(frame, on=["date", "barrid"], how="left")
+    return frame.select(columns).sort("barrid", "date").collect()
 
 
 @lru_cache(maxsize=64)

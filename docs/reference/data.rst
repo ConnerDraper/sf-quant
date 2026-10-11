@@ -48,3 +48,28 @@ Data
    get_alpha_names
    load_composite_alphas
    load_composite_alphas_by_date
+
+Configuration and caching
+-------------------------
+
+.. autosummary::
+   :toctree: data
+   :nosignatures:
+
+   env
+   EnvNotConfiguredError
+   clear_cache
+
+Market data interface
+---------------------
+
+.. autosummary::
+   :toctree: data
+   :nosignatures:
+
+   MarketData
+   SfQuantMarketData
+   CachedMarketData
+   cached
+   trading_days
+   rebalance_dates

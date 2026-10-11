@@ -38,16 +38,10 @@ def load_factors(start: dt.date, end: dt.date, factors: list[str] | None = None)
     ... )
     >>> df.head()
     """
-    if factors:
-        return (
-            factors_table.scan()
-            .filter(pl.col("date").is_between(start, end))
-            .sort("date")
-            .select(["date"] + factors)
-            .collect()
-        )
-    else:
-        return factors_table.scan().filter(pl.col("date").is_between(start, end)).sort("date").collect()
+    frame = factors_table.scan().filter(pl.col("date").is_between(start, end)).sort("date")
+    if factors:  # an empty list means every factor, as it always has
+        frame = frame.select(["date"] + factors)
+    return frame.collect()
 
 
 def get_factors_columns() -> str:
