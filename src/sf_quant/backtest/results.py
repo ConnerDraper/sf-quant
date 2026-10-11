@@ -127,7 +127,9 @@ def summarize(returns: pl.DataFrame, diagnostics: pl.DataFrame, config: Backtest
         "mean_te_shortfall": _mean(ok["te_shortfall"]),
         "mean_transfer_coefficient": _mean(ok["transfer_coefficient"].drop_nans()),
         "realized_active_beta": float(np.cov(active, benchmark)[0, 1] / np.var(benchmark, ddof=1)),
-        "factor_share_of_active_variance": _ratio(np.var(returns["active_factor"].to_numpy(), ddof=1), np.var(active, ddof=1)),
+        "factor_share_of_active_variance": _ratio(
+            np.var(returns["active_factor"].to_numpy(), ddof=1), np.var(active, ddof=1)
+        ),
         "annual_turnover": float(annual_turnover),
         "n_rebalances": diagnostics.height,
         "failed_rebalances": diagnostics.height - ok.height,

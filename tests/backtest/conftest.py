@@ -13,9 +13,7 @@ from sf_quant.backtest import BacktestConfig, run_backtest
 
 
 def config(md, **overrides) -> BacktestConfig:
-    return BacktestConfig.from_dict(
-        {"name": "test", "start": md.days[0], "end": md.days[-1]} | overrides
-    )
+    return BacktestConfig.from_dict({"name": "test", "start": md.days[0], "end": md.days[-1]} | overrides)
 
 
 def run(md, alphas, **overrides):

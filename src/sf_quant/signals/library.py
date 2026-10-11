@@ -20,9 +20,9 @@ def _history_start(first: dt.date, trading_days: int) -> dt.date:
 
 def _rolling_specific(data: MarketData, universe: pl.DataFrame, history: int, score: pl.Expr) -> pl.DataFrame:
     dates = universe["date"].unique().sort()
-    u = data.specific_returns(
-        _history_start(dates[0], history), dates[-1], universe["barrid"].unique().to_list()
-    ).sort("barrid", "date")
+    u = data.specific_returns(_history_start(dates[0], history), dates[-1], universe["barrid"].unique().to_list()).sort(
+        "barrid", "date"
+    )
     scored = u.with_columns(score.over("barrid").alias("score")).select("date", "barrid", "score")
     return universe.join(scored, on=["date", "barrid"], how="inner").drop_nulls("score")
 
@@ -77,7 +77,11 @@ class IndustryMomentum(Signal):
                 continue
             ids = members["barrid"].to_list()
             exposures = data.exposures(date_[0], ids).select(industries).to_numpy()
-            out.append(pl.DataFrame({"date": date_[0], "barrid": ids, "score": exposures @ row.select(industries).to_numpy()[0]}))
+            out.append(
+                pl.DataFrame(
+                    {"date": date_[0], "barrid": ids, "score": exposures @ row.select(industries).to_numpy()[0]}
+                )
+            )
         return pl.concat(out) if out else universe.head(0).with_columns(score=pl.lit(0.0))
 
 

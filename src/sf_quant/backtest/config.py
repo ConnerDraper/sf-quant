@@ -83,10 +83,7 @@ class BacktestConfig:
 
     def resolved(self) -> dict[str, Any]:
         """Every field, defaults included, as YAML-safe types."""
-        return {
-            k: v.isoformat() if isinstance(v, dt.date) else v
-            for k, v in dataclasses.asdict(self).items()
-        }
+        return {k: v.isoformat() if isinstance(v, dt.date) else v for k, v in dataclasses.asdict(self).items()}
 
     def hash(self) -> str:
         """Short hash of everything that affects results (not n_workers or slurm)."""

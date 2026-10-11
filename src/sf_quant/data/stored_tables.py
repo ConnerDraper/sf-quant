@@ -98,7 +98,9 @@ def get_alpha_names() -> list[str]:
 
 def load_composite_alphas(start: dt.date, end: dt.date) -> pl.DataFrame:
     """Stored composite alphas between ``start`` and ``end`` (inclusive). Columns: ``date``, ``barrid``, ``alpha``."""
-    return composite_alphas_table.scan().filter(pl.col("date").is_between(start, end)).sort(["barrid", "date"]).collect()
+    return (
+        composite_alphas_table.scan().filter(pl.col("date").is_between(start, end)).sort(["barrid", "date"]).collect()
+    )
 
 
 def load_composite_alphas_by_date(date_: dt.date) -> pl.DataFrame:

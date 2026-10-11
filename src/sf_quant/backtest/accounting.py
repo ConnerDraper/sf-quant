@@ -136,13 +136,9 @@ def _turnover(drifted: dict[str, float] | None, target: dict[str, float]) -> flo
     return float(sum(abs(target.get(n, 0.0) - drifted.get(n, 0.0)) for n in drifted.keys() | target.keys()))
 
 
-def _matrix(
-    df: pl.DataFrame, days: list[dt.date], col: dict[str, int], value: str
-) -> tuple[np.ndarray, np.ndarray]:
+def _matrix(df: pl.DataFrame, days: list[dt.date], col: dict[str, int], value: str) -> tuple[np.ndarray, np.ndarray]:
     """Dense (days x names) matrix of ``value`` (zero where missing) and a presence mask."""
-    df = df.filter(
-        pl.col("date").is_in(days), pl.col("barrid").is_in(list(col)), pl.col(value).is_not_null()
-    )
+    df = df.filter(pl.col("date").is_in(days), pl.col("barrid").is_in(list(col)), pl.col(value).is_not_null())
     row = {day: i for i, day in enumerate(days)}
     r = np.array([row[d] for d in df["date"]], dtype=int)
     c = np.array([col[b] for b in df["barrid"]], dtype=int)

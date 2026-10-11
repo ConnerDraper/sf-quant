@@ -40,8 +40,16 @@ def truncate(md: PanelMarketData, end) -> PanelMarketData:
     """The same market, with every panel cut off after ``end``."""
     cut = lambda df: df.filter(pl.col("date") <= end)  # noqa: E731
     out = PanelMarketData(
-        cut(md.returns), cut(md.benchmark), md.ids, md.B, md.F, md.delta, md.factor_names,
-        factor_returns=cut(md.factors), specific_returns=cut(md.specific), prices=cut(md.price_panel),
+        cut(md.returns),
+        cut(md.benchmark),
+        md.ids,
+        md.B,
+        md.F,
+        md.delta,
+        md.factor_names,
+        factor_returns=cut(md.factors),
+        specific_returns=cut(md.specific),
+        prices=cut(md.price_panel),
     )
     out.planted_scores = md.planted_scores
     return out

@@ -47,13 +47,13 @@ class PanelMarketData:
         self.factor_names = factor_names
         self.returns = returns
         self.benchmark = benchmark
-        self.factors = factor_returns if factor_returns is not None else pl.DataFrame(
-            {"date": days} | {f: np.zeros(len(days)) for f in factor_names}
+        self.factors = (
+            factor_returns
+            if factor_returns is not None
+            else pl.DataFrame({"date": days} | {f: np.zeros(len(days)) for f in factor_names})
         )
         self.specific = (
-            specific_returns
-            if specific_returns is not None
-            else returns.rename({"return": "specific_return"})
+            specific_returns if specific_returns is not None else returns.rename({"return": "specific_return"})
         )
         self.price_panel = prices if prices is not None else benchmark.select("date", "barrid", price=pl.lit(50.0))
         self.missing_risk: set[str] = set()
@@ -164,5 +164,7 @@ def synthetic_market(
         factor_returns=pl.DataFrame({"date": days} | {n: f[:, k] for k, n in enumerate(FACTORS)}),
     )
     # The score known at the close of day d predicts the block containing day d + 1.
-    md.planted_scores = panel(blocks[np.minimum(block + (np.arange(n_days) % horizon == horizon - 1), block.max() + 1)], "score")
+    md.planted_scores = panel(
+        blocks[np.minimum(block + (np.arange(n_days) % horizon == horizon - 1), block.max() + 1)], "score"
+    )
     return md

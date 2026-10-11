@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-
 def generate_returns_chart(
     returns: pl.DataFrame,
     title: str,
@@ -50,26 +49,15 @@ def generate_returns_chart(
     - If ``log_scale=True``, both daily and cumulative returns are transformed
       using the natural log (``log1p``).
     """
-    returns_wide = (
-        returns.sort("date")
-        .with_columns(
-            pl.col("return")
-            .add(1)
-            .cum_prod()
-            .sub(1)
-            .alias("cumulative_return")
-        )
+    returns_wide = returns.sort("date").with_columns(
+        pl.col("return").add(1).cum_prod().sub(1).alias("cumulative_return")
     )
 
     if log_scale:
-        returns_wide = returns_wide.with_columns(
-            pl.col("return", "cumulative_return").log1p()
-        )
+        returns_wide = returns_wide.with_columns(pl.col("return", "cumulative_return").log1p())
 
     # Put into percent space
-    returns_wide = returns_wide.with_columns(
-        pl.col("return", "cumulative_return").mul(100)
-    )
+    returns_wide = returns_wide.with_columns(pl.col("return", "cumulative_return").mul(100))
 
     plt.figure(figsize=(10, 6))
 
@@ -92,6 +80,7 @@ def generate_returns_chart(
         plt.savefig(file_name)
     else:
         plt.show()
+
 
 def generate_multi_returns_chart(
     returns: pl.DataFrame,
@@ -144,26 +133,15 @@ def generate_multi_returns_chart(
     """
     returns_wide = (
         returns.sort("date", "portfolio")
-        .with_columns(
-            pl.col("return")
-            .add(1)
-            .cum_prod()
-            .sub(1)
-            .over("portfolio")
-            .alias("cumulative_return")
-        )
+        .with_columns(pl.col("return").add(1).cum_prod().sub(1).over("portfolio").alias("cumulative_return"))
         .with_columns(pl.col("portfolio").str.to_titlecase().alias("label"))
     )
 
     if log_scale:
-        returns_wide = returns_wide.with_columns(
-            pl.col("return", "cumulative_return").log1p()
-        )
+        returns_wide = returns_wide.with_columns(pl.col("return", "cumulative_return").log1p())
 
     # Put into percent space
-    returns_wide = returns_wide.with_columns(
-        pl.col("return", "cumulative_return").mul(100)
-    )
+    returns_wide = returns_wide.with_columns(pl.col("return", "cumulative_return").mul(100))
 
     plt.figure(figsize=(10, 6))
 
@@ -186,6 +164,7 @@ def generate_multi_returns_chart(
         plt.savefig(file_name)
     else:
         plt.show()
+
 
 def generate_drawdown_chart(
     drawdowns: pl.DataFrame,
@@ -225,10 +204,7 @@ def generate_drawdown_chart(
     -----
     Drawdowns are expressed in percentages for visualization.
     """
-    drawdowns_wide = (
-        drawdowns.sort("date")
-        .with_columns(pl.col("drawdown").mul(100))
-    )
+    drawdowns_wide = drawdowns.sort("date").with_columns(pl.col("drawdown").mul(100))
 
     plt.figure(figsize=(10, 6))
 

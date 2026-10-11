@@ -37,9 +37,7 @@ def crsp_monthly_clean():
             pl.col("shrcd").fill_null(strategy="forward").over("permno"),
             pl.col("exchcd").fill_null(strategy="forward").over("permno"),
         )
-        .filter(
-            pl.col("shrcd").is_in([10, 11, None]), pl.col("exchcd").is_in([1, 2, 3, None])
-        )
+        .filter(pl.col("shrcd").is_in([10, 11, None]), pl.col("exchcd").is_in([1, 2, 3, None]))
         .with_columns(pl.col("prc").abs())
         .filter(~pl.col("ret").is_in([-66.0, -77.0, -88.0, -99.0]))
         .sort(["permno", "date"])
@@ -57,9 +55,7 @@ def crsp_v2_monthly_clean():
             pl.col("shrcd").fill_null(strategy="forward").over("permno"),
             pl.col("exchcd").fill_null(strategy="forward").over("permno"),
         )
-        .filter(
-            pl.col("shrcd").is_in([10, 11, None]), pl.col("exchcd").is_in([1, 2, 3, None])
-        )
+        .filter(pl.col("shrcd").is_in([10, 11, None]), pl.col("exchcd").is_in([1, 2, 3, None]))
         .with_columns(pl.col("prc").abs())
         .filter(~pl.col("ret").is_in([-66.0, -77.0, -88.0, -99.0]))
         .sort(["permno", "date"])
@@ -103,14 +99,11 @@ def crsp_v2_daily_clean():
 def benchmark():
     return (
         assets_table.scan()
-        .filter(pl.col('in_universe'))
+        .filter(pl.col("in_universe"))
         .select(
             "date",
             "barrid",
-            pl.col("market_cap")
-            .truediv(pl.col("market_cap").sum())
-            .over("date")
-            .alias("weight"),
+            pl.col("market_cap").truediv(pl.col("market_cap").sum()).over("date").alias("weight"),
         )
     )
 
@@ -124,9 +117,7 @@ def benchmark_returns():
         .sort("barrid", "date")
         .with_columns(pl.col("weight").shift(1).over("barrid"))
         .join(
-            assets_table.scan()
-            .filter(pl.col("in_universe"))
-            .select("date", "barrid", "return"),
+            assets_table.scan().filter(pl.col("in_universe")).select("date", "barrid", "return"),
             on=["date", "barrid"],
             how="inner",
         )

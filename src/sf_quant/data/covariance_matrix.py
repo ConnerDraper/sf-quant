@@ -74,13 +74,9 @@ def load_risk_model(date_: dt.date, barrids: list[str]) -> RiskModel:
         raise ValueError("barrids must be unique.")
 
     exposures = (
-        load_exposures_by_date(date_)
-        .select(["barrid"] + factors)
-        .with_columns(pl.lit(True).alias("_has_exposures"))
+        load_exposures_by_date(date_).select(["barrid"] + factors).with_columns(pl.lit(True).alias("_has_exposures"))
     )
-    specific = load_assets_by_date(
-        date_, in_universe=False, columns=["barrid", "specific_risk"]
-    )
+    specific = load_assets_by_date(date_, in_universe=False, columns=["barrid", "specific_risk"])
 
     joined = (
         request.join(exposures, on="barrid", how="left")
@@ -116,7 +112,7 @@ def _construct_factor_covariance_matrix(date_: dt.date) -> pl.DataFrame:
     # Sort headers and columns
     fc_df = fc_df.select(["factor_1"] + factors)
 
-    fc_df = fc_df.filter(pl.col('factor_1').is_in(factors))
+    fc_df = fc_df.filter(pl.col("factor_1").is_in(factors))
 
     fc_df = fc_df.sort("factor_1")
 

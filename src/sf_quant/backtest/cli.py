@@ -22,7 +22,9 @@ def main() -> None:
 
 @main.command()
 @click.argument("config_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--alphas", "alphas_path", required=True, type=click.Path(exists=True), help="Parquet with date, barrid, alpha.")
+@click.option(
+    "--alphas", "alphas_path", required=True, type=click.Path(exists=True), help="Parquet with date, barrid, alpha."
+)
 @click.option("--out", "out_dir", type=click.Path(file_okay=False), help="Output directory (default runs/<name>).")
 def run(config_path: str, alphas_path: str, out_dir: str | None) -> None:
     """Run a backtest in this process and save its outputs."""
@@ -57,8 +59,17 @@ def sbatch_script(cfg: BacktestConfig, config_path: Path, alphas_path: Path, out
     slurm, logs = cfg.slurm, out_dir.resolve() / "logs"
     command = shlex.join(
         str(part)
-        for part in (sys.executable, "-m", "sf_quant.backtest.cli", "run", config_path.resolve(),
-                     "--alphas", alphas_path.resolve(), "--out", out_dir.resolve())
+        for part in (
+            sys.executable,
+            "-m",
+            "sf_quant.backtest.cli",
+            "run",
+            config_path.resolve(),
+            "--alphas",
+            alphas_path.resolve(),
+            "--out",
+            out_dir.resolve(),
+        )
     )
     lines = [
         "#!/bin/bash",

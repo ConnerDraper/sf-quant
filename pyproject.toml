@@ -33,5 +33,10 @@ dev = [
     "pytest>=9.1.1",
 ]
 
+[tool.ruff]
+# The package is written to ~120 columns: the optimizer and backtester chain
+# long polars and numpy expressions that read worse wrapped at 88.
+line-length = 120
+
 [tool.pytest.ini_options]
 pythonpath = ["tests"]  # tests import the synthetic market from tests/synthetic.py

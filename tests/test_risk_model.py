@@ -12,14 +12,9 @@ from sf_quant.data._factors import factors
 def test_load_risk_model_reports_missing_ids(monkeypatch):
     date_ = dt.date(2024, 1, 3)
     k = len(factors)
-    exposures = pl.DataFrame(
-        {"date": [date_] * 3, "barrid": ["A", "B", "C"]}
-        | {f: [1.0, 0.5, None] for f in factors}
-    )
+    exposures = pl.DataFrame({"date": [date_] * 3, "barrid": ["A", "B", "C"]} | {f: [1.0, 0.5, None] for f in factors})
     assets = pl.DataFrame({"barrid": ["A", "B", "D"], "specific_risk": [30.0, None, 25.0]})
-    factor_cov = pl.DataFrame(
-        {"factor_1": factors} | {f: np.eye(k)[:, i] * 4.0 for i, f in enumerate(factors)}
-    )
+    factor_cov = pl.DataFrame({"factor_1": factors} | {f: np.eye(k)[:, i] * 4.0 for i, f in enumerate(factors)})
 
     monkeypatch.setattr(cm, "load_exposures_by_date", lambda d: exposures)
     monkeypatch.setattr(cm, "load_assets_by_date", lambda d, in_universe, columns: assets)

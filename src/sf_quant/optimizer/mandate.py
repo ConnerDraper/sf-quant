@@ -106,10 +106,7 @@ def active_variance(
 ) -> float:
     """Compute :math:`h^T V h` using the factor decomposition."""
     loadings = factor_exposures.T @ active_weights
-    return float(
-        loadings @ factor_covariance @ loadings
-        + np.sum(specific_variance * active_weights**2)
-    )
+    return float(loadings @ factor_covariance @ loadings + np.sum(specific_variance * active_weights**2))
 
 
 def benchmark_betas(
@@ -292,7 +289,9 @@ def mandate_optimizer(
             alphas, B, F, delta, b, beta, target_active_risk, factor_bounds, neutral_factors or []
         )
 
-    return _result(ids, h, status, time.perf_counter() - start, alphas, B, F, delta, b, beta, target_active_risk, shadow)
+    return _result(
+        ids, h, status, time.perf_counter() - start, alphas, B, F, delta, b, beta, target_active_risk, shadow
+    )
 
 
 def _validate_inputs(ids, alphas, B, F, delta, b, target_active_risk) -> None:
@@ -301,8 +300,13 @@ def _validate_inputs(ids, alphas, B, F, delta, b, target_active_risk) -> None:
         raise ValueError("alphas, specific_variance, and benchmark_weights must have shape (n_assets,).")
     if B.shape[0] != n_assets or F.shape != (B.shape[1], B.shape[1]):
         raise ValueError("factor_exposures must be (n_assets, n_factors) and factor_covariance (n_factors, n_factors).")
-    for name, arr in (("alphas", alphas), ("factor_exposures", B), ("factor_covariance", F),
-                      ("specific_variance", delta), ("benchmark_weights", b)):
+    for name, arr in (
+        ("alphas", alphas),
+        ("factor_exposures", B),
+        ("factor_covariance", F),
+        ("specific_variance", delta),
+        ("benchmark_weights", b),
+    ):
         if not np.all(np.isfinite(arr)):
             raise ValueError(f"{name} contains non-finite values.")
     if np.any(delta < 0):
