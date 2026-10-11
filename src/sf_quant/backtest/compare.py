@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import polars as pl
-from sf_quant.data import MarketData, SfQuantMarketData
+from sf_quant.data import MarketData, SfQuantMarketData, cached
 from sf_quant.signals import FactorReport, Signal, build_composite, factor_report
 
 from .backtest import run_backtest
@@ -45,7 +45,9 @@ def compare(
     alone under ``config``. ``composite_options`` go to
     :func:`sf_quant.signals.build_composite` (e.g. ``ic_shrink_obs``).
     """
-    md = market_data if market_data is not None else SfQuantMarketData()
+    # Wrapped once here: build_composite, factor_report, and run_backtest all
+    # see the same cache instead of each building its own.
+    md = cached(market_data if market_data is not None else SfQuantMarketData())
     window = (md, config.start, config.end, config.rebalance, config.execution_lag_days)
 
     runs = {"with_candidate": [*baseline, candidate], "candidate": [candidate]}

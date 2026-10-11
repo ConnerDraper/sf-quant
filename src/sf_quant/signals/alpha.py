@@ -21,7 +21,7 @@ import numpy as np
 import polars as pl
 
 from sf_quant.data.covariance_matrix import RiskModel
-from sf_quant.data.market import MarketData, rebalance_dates, trading_days
+from sf_quant.data.market import MarketData, cached, rebalance_dates, trading_days
 
 from .base import NO_FACTORS, Constraints, Signal
 
@@ -81,9 +81,11 @@ def standardize(scores: pl.DataFrame) -> pl.DataFrame:
     """Per date: winsorize at the 1st/99th percentiles, then z-score."""
     s = pl.col("score")
     clipped = s.clip(s.quantile(0.01).over("date"), s.quantile(0.99).over("date"))
-    return scores.with_columns(clipped.alias("score")).with_columns(
-        ((s - s.mean().over("date")) / s.std().over("date")).alias("z")
-    ).select("date", "barrid", "z")
+    return (
+        scores.with_columns(clipped.alias("score"))
+        .with_columns(((s - s.mean().over("date")) / s.std().over("date")).alias("z"))
+        .select("date", "barrid", "z")
+    )
 
 
 def residualize(z: np.ndarray, B: np.ndarray, weights: np.ndarray) -> np.ndarray:
@@ -161,7 +163,9 @@ def target_returns(
         cols = [k for k, name in enumerate(ctx.rm.factor_names) if name in allowed]
         x = u_sum["specific_return"].to_numpy()
         if cols:
-            f_sum = _slice(f, window[0], window[-1]).select(ctx.rm.factor_names[k] for k in cols).sum().to_numpy().ravel()
+            f_sum = (
+                _slice(f, window[0], window[-1]).select(ctx.rm.factor_names[k] for k in cols).sum().to_numpy().ravel()
+            )
             x = x + ctx.rm.factor_exposures[np.ix_(rows, cols)] @ f_sum
         out.append(pl.DataFrame({"date": ctx.date, "barrid": u_sum["barrid"], "target": x / ctx.sigma(allowed)[rows]}))
     return pl.concat(out)
@@ -190,6 +194,7 @@ def build_alpha(
     Under a fixed risk target the IC scales reported expected return, not weights.
     """
     horizon = HORIZON[rebalance]
+    data = cached(data)
     _, ctxs = contexts(data, start, end, rebalance)
     z = residual_scores(signal.compute(data, universe_frame(ctxs)), ctxs, signal.allowed_factors)
     sigmas = pl.concat(

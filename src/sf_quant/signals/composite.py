@@ -23,7 +23,7 @@ from functools import reduce
 import numpy as np
 import polars as pl
 
-from sf_quant.data.market import MarketData
+from sf_quant.data.market import MarketData, cached
 
 from .alpha import HORIZON, AlphaPanel, contexts, estimate_ic, residual_scores, target_returns, universe_frame
 from .base import Constraints, Signal
@@ -67,6 +67,7 @@ def build_composite(
     allowed = frozenset().union(*(s.allowed_factors for s in signals))
     constraints = reduce(Constraints.combine, (s.constraints for s in signals), Constraints())
 
+    data = cached(data)
     days, ctxs = contexts(data, start, end, rebalance)
     universe = universe_frame(ctxs)
     z = {

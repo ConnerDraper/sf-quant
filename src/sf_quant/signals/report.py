@@ -30,7 +30,7 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-from sf_quant.data.market import MarketData
+from sf_quant.data.market import MarketData, cached
 from sf_quant.optimizer.mandate import _independent, active_variance, benchmark_betas, equality_direction
 
 from .alpha import HORIZON, _slice, contexts, estimate_ic, residual_scores, standardize, target_returns, universe_frame
@@ -80,7 +80,11 @@ class FactorReport:
         _bar_axes(ax, y, ticks, "Return contribution (% per year)")
 
         ax = axes[0, 1]
-        series = [(f"{kind}_risk_share_{p}", f"{p}, {kind.replace('_', '-')}") for p in PORTFOLIOS for kind in ("ex_ante", "realized")]
+        series = [
+            (f"{kind}_risk_share_{p}", f"{p}, {kind.replace('_', '-')}")
+            for p in PORTFOLIOS
+            for kind in ("ex_ante", "realized")
+        ]
         for i, (column, name) in enumerate(series):
             ax.barh(y + (i - 1.5) * 0.2, rows[column] * 100, height=0.2, label=name)
         _bar_axes(ax, y, ticks, "Share of variance (%)")
@@ -97,8 +101,13 @@ class FactorReport:
             for label in rows["label"]:
                 line = cumulative.filter(pl.col("portfolio") == p, pl.col("label") == label)
                 specific = label == "Specific"
-                ax.plot(line["date"], line["contribution"], label=label,
-                        color="black" if specific else colors[label], linewidth=2.5 if specific else 1.2)
+                ax.plot(
+                    line["date"],
+                    line["contribution"],
+                    label=label,
+                    color="black" if specific else colors[label],
+                    linewidth=2.5 if specific else 1.2,
+                )
             ax.axhline(0, color="grey", linewidth=0.8)
             ax.set_title(f"Cumulative return by factor, {p}")
             ax.set_ylabel("Cumulative return (%)")
@@ -125,6 +134,7 @@ def factor_report(
     """Break a signal's return and risk into Barra factors plus specific, before and after orthogonalization."""
     horizon = HORIZON[rebalance]
     allowed = signal.allowed_factors
+    data = cached(data)
     days, ctxs = contexts(data, start, end, rebalance)
     scores = signal.compute(data, universe_frame(ctxs))
     raw, residual = standardize(scores), residual_scores(scores, ctxs, allowed)
@@ -232,9 +242,12 @@ def _group(name: str) -> str:
 def _label() -> pl.Expr:
     group = pl.col("group")
     return (
-        pl.when(group == "industry").then(pl.lit("Industries"))
-        .when(group == "country").then(pl.lit("Country"))
-        .when(group == "specific").then(pl.lit("Specific"))
+        pl.when(group == "industry")
+        .then(pl.lit("Industries"))
+        .when(group == "country")
+        .then(pl.lit("Country"))
+        .when(group == "specific")
+        .then(pl.lit("Specific"))
         .otherwise(pl.col("factor").str.replace("USSLOWL_", "").str.to_titlecase())
     )
 

@@ -1,12 +1,13 @@
 import datetime as dt
+from functools import lru_cache
+
 import polars as pl
 
+from ._config import register_cache
 from ._tables import assets_table
 
 
-def load_assets(
-    start: dt.date, end: dt.date, columns: list[str], in_universe: bool | None = None
-) -> pl.DataFrame:
+def load_assets(start: dt.date, end: dt.date, columns: list[str], in_universe: bool | None = None) -> pl.DataFrame:
     """
     Load a Polars DataFrame of assets data between two dates.
 
@@ -43,26 +44,11 @@ def load_assets(
     ...     columns=columns
     ... )
     >>> df.head()
-    shape: (5, 3)
-    ┌────────────┬─────────┬───────┐
-    │ date       ┆ barrid  ┆ price │
-    │ ---        ┆ ---     ┆ ---   │
-    │ date       ┆ str     ┆ f64   │
-    ╞════════════╪═════════╪═══════╡
-    │ 2024-01-02 ┆ USA06Z1 ┆ 7.87  │
-    │ 2024-01-03 ┆ USA06Z1 ┆ 7.775 │
-    │ 2024-01-04 ┆ USA06Z1 ┆ 7.76  │
-    │ 2024-01-05 ┆ USA06Z1 ┆ 7.8   │
-    │ 2024-01-08 ┆ USA06Z1 ┆ 8.22  │
-    └────────────┴─────────┴───────┘
     """
     if in_universe:
         return (
             assets_table.scan()
-            .filter(
-                pl.col("date").is_between(start, end),
-                pl.col('in_universe')
-            )
+            .filter(pl.col("date").is_between(start, end), pl.col("in_universe"))
             .sort(["barrid", "date"])
             .select(columns)
             .collect()
@@ -78,9 +64,7 @@ def load_assets(
         )
 
 
-def load_assets_by_date(
-    date_: dt.date, in_universe: bool, columns: list[str]
-) -> pl.DataFrame:
+def load_assets_by_date(date_: dt.date, in_universe: bool, columns: list[str]) -> pl.DataFrame:
     """
     Load a Polars DataFrame of assets data for a single date.
 
@@ -113,28 +97,24 @@ def load_assets_by_date(
     ...     columns=columns
     ... )
     >>> df.head()
-    shape: (5, 3)
-    ┌────────────┬─────────┬───────┐
-    │ date       ┆ barrid  ┆ price │
-    │ ---        ┆ ---     ┆ ---   │
-    │ date       ┆ str     ┆ f64   │
-    ╞════════════╪═════════╪═══════╡
-    │ 2024-01-03 ┆ USA06Z1 ┆ 7.775 │
-    │ 2024-01-03 ┆ USA0771 ┆ 10.23 │
-    │ 2024-01-03 ┆ USA0C11 ┆ 74.15 │
-    │ 2024-01-03 ┆ USA0SY1 ┆ 130.1 │
-    │ 2024-01-03 ┆ USA11I1 ┆ 43.55 │
-    └────────────┴─────────┴───────┘
+
+    Notes
+    -----
+    The returned frame is cached and shared between callers, so treat it as
+    read-only. Call :func:`sf_quant.data.clear_cache` to drop it.
     """
+    return _assets_by_date(date_, in_universe, tuple(columns))
+
+
+@lru_cache(maxsize=64)
+def _assets_by_date(date_: dt.date, in_universe: bool, columns: tuple[str, ...]) -> pl.DataFrame:
+    """Cached body of :func:`load_assets_by_date` (``columns`` made hashable)."""
     if in_universe:
         return (
             assets_table.scan()
-            .filter(
-                pl.col("date").eq(date_),
-                pl.col('in_universe')
-            )
+            .filter(pl.col("date").eq(date_), pl.col("in_universe"))
             .sort(["barrid", "date"])
-            .select(columns)
+            .select(list(columns))
             .collect()
         )
     else:
@@ -142,9 +122,12 @@ def load_assets_by_date(
             assets_table.scan(date_.year)
             .filter(pl.col("date").eq(date_))
             .sort(["barrid", "date"])
-            .select(columns)
+            .select(list(columns))
             .collect()
         )
+
+
+register_cache(_assets_by_date.cache_clear)
 
 
 def get_assets_columns() -> str:
@@ -165,18 +148,5 @@ def get_assets_columns() -> str:
     --------
     >>> import sf_quant.data as sfd
     >>> sfd.get_assets_columns()
-    shape: (30, 2)
-    ┌──────────────────────┬─────────┐
-    │ column               ┆ dtype   │
-    │ ---                  ┆ ---     │
-    │ str                  ┆ str     │
-    ╞══════════════════════╪═════════╡
-    │ date                 ┆ Date    │
-    │ rootid               ┆ String  │
-    │ barrid               ┆ String  │
-    │ issuerid             ┆ String  │
-    │ instrument           ┆ String  │
-    │ ...                  ┆ ...     │
-    └──────────────────────┴─────────┘
     """
     return assets_table.columns()

@@ -1,4 +1,6 @@
 import os
+from collections.abc import Callable
+
 import dotenv
 
 dotenv.load_dotenv(override=True)
@@ -8,12 +10,28 @@ _config = {
     "database": os.environ.get("DATABASE", ""),
 }
 
+# Cached loaders register their cache_clear here. Pointing the package at a
+# different database must drop frames read from the previous one.
+_cache_clearers: list[Callable[[], None]] = []
+
+
+def register_cache(clear: Callable[[], None]) -> None:
+    """Register a cache to be dropped whenever the environment changes."""
+    _cache_clearers.append(clear)
+
+
+def clear_cache() -> None:
+    """Drop every cached table read. Call after the data on disk changes."""
+    for clear in _cache_clearers:
+        clear()
+
 
 def env(root: str | None = None, database: str | None = None) -> None:
     if root is not None:
         _config["root"] = root
     if database is not None:
         _config["database"] = database
+    clear_cache()  # cached frames may come from the previous database
 
 
 class EnvNotConfiguredError(Exception):

@@ -1,7 +1,11 @@
 import datetime as dt
+from functools import lru_cache
+
 import polars as pl
 
+from ._config import register_cache
 from ._tables import exposures_table, assets_table
+
 
 def load_exposures(start: dt.date, end: dt.date, in_universe: bool, columns: list) -> pl.DataFrame:
     """
@@ -39,41 +43,23 @@ def load_exposures(start: dt.date, end: dt.date, in_universe: bool, columns: lis
     ...     "USSLOWL_VALUE"
     ... ]
     >>> df = sfd.load_exposures(
-    ...     start=start, 
-    ...     end=end, 
+    ...     start=start,
+    ...     end=end,
     ...     in_universe=True,
     ...     columns=columns
     ... )
     >>> df.head()
-    shape: (5, 4)
-    ┌────────────┬─────────┬──────────────────┬───────────────┐
-    │ date       ┆ barrid  ┆ USSLOWL_MOMENTUM ┆ USSLOWL_VALUE │
-    │ ---        ┆ ---     ┆ ---              ┆ ---           │
-    │ date       ┆ str     ┆ f64              ┆ f64           │
-    ╞════════════╪═════════╪══════════════════╪═══════════════╡
-    │ 2024-01-02 ┆ USA06Z1 ┆ 1.39             ┆ -0.724        │
-    │ 2024-01-03 ┆ USA06Z1 ┆ 1.417            ┆ -0.718        │
-    │ 2024-01-04 ┆ USA06Z1 ┆ 1.308            ┆ -0.709        │
-    │ 2024-01-05 ┆ USA06Z1 ┆ 1.359            ┆ -0.71         │
-    │ 2024-01-08 ┆ USA06Z1 ┆ 1.36             ┆ -0.706        │
-    └────────────┴─────────┴──────────────────┴───────────────┘
     """
     if in_universe:
         return (
             assets_table.scan()
-            .filter(
-                pl.col('in_universe')
-            )
-            .select('date', 'barrid')
-            .join(
-                other=exposures_table.scan(),
-                on=['date', 'barrid'],
-                how='left'
-            )
+            .filter(pl.col("in_universe"))
+            .select("date", "barrid")
+            .join(other=exposures_table.scan(), on=["date", "barrid"], how="left")
             .filter(pl.col("date").is_between(start, end))
             .select(columns)
             .sort("barrid", "date")
-            .collect()       
+            .collect()
         )
 
     else:
@@ -86,14 +72,18 @@ def load_exposures(start: dt.date, end: dt.date, in_universe: bool, columns: lis
         )
 
 
+@lru_cache(maxsize=64)
 def load_exposures_by_date(date_: dt.date) -> pl.DataFrame:
-    """Load all factor exposures for a single date."""
-    return (
-        exposures_table.scan(date_.year)
-        .filter(pl.col("date").eq(date_))
-        .sort("barrid", "date")
-        .collect()
-    )
+    """
+    Load all factor exposures for a single date.
+
+    The returned frame is cached and shared between callers, so treat it as
+    read-only. Call :func:`sf_quant.data.clear_cache` to drop it.
+    """
+    return exposures_table.scan(date_.year).filter(pl.col("date").eq(date_)).sort("barrid", "date").collect()
+
+
+register_cache(load_exposures_by_date.cache_clear)
 
 
 def get_exposures_columns() -> str:
@@ -108,26 +98,11 @@ def get_exposures_columns() -> str:
     -------
     str
         A string representation of a polars data frame containing the
-        column names and types for the assets table.
+        column names and types for the exposures table.
 
     Examples
     --------
     >>> import sf_quant.data as sfd
     >>> sfd.get_exposures_columns()
-    shape: (79, 2)
-    ┌──────────────────┬─────────┐
-    │ column           ┆ dtype   │
-    │ ---              ┆ ---     │
-    │ str              ┆ str     │
-    ╞══════════════════╪═════════╡
-    │ date             ┆ Date    │
-    │ barrid           ┆ String  │
-    │ USSLOWL_AERODEF  ┆ Float64 │
-    │ USSLOWL_AIRLINES ┆ Float64 │
-    │ USSLOWL_ALUMSTEL ┆ Float64 │
-    │ USSLOWL_APPAREL  ┆ Float64 │
-    │ USSLOWL_AUTO     ┆ Float64 │
-    │ ...              ┆ ...     │
-    └──────────────────┴─────────┘
     """
     return exposures_table.columns()

@@ -114,8 +114,9 @@ class SfQuantMarketData:
                 .select(
                     "date",
                     "barrid",
-                    (pl.col("return") - pl.sum_horizontal(pl.col(k) * pl.col(f"{k}_f") for k in factors))
-                    .alias("specific_return"),
+                    (pl.col("return") - pl.sum_horizontal(pl.col(k) * pl.col(f"{k}_f") for k in factors)).alias(
+                        "specific_return"
+                    ),
                 )
                 .drop_nulls()
             )
@@ -145,3 +146,70 @@ class SfQuantMarketData:
         from .covariance_matrix import load_risk_model
 
         return load_risk_model(date_, barrids)
+
+
+class CachedMarketData:
+    """
+    Caches another :class:`MarketData`'s specific returns within one process.
+
+    A research run asks for specific returns several times over nested ranges:
+    each signal reaches back by its own lookback, and the IC target window sits
+    inside both. Keyed on the requested range those requests all miss, so this
+    keeps one frame per asset set, widens it to cover every range asked for so
+    far, and slices. Widening is safe because ``u_d = r_d - B_{d-1} f_d`` is
+    row-local apart from the one-day exposure shift, which the underlying
+    implementation already pads for: a wider range can only add rows, never
+    change the value of a row it already returned.
+
+    Everything else delegates. Table reads keyed by date are cached further
+    down, in the loaders themselves.
+    """
+
+    def __init__(self, inner: MarketData) -> None:
+        self._inner = inner
+        self._specific: dict[frozenset[str], tuple[dt.date, dt.date, pl.DataFrame]] = {}
+
+    def __getstate__(self) -> dict:
+        # Workers start with an empty cache; pickling the frames would copy
+        # them into every process.
+        return {"_inner": self._inner, "_specific": {}}
+
+    def __getattr__(self, name: str):
+        # Stay transparent: a market data implementation may carry more than
+        # the protocol (extra attributes, helper methods), and signals written
+        # against it should not notice the wrapper.
+        if name == "_inner":  # not yet set, e.g. partway through unpickling
+            raise AttributeError(name)
+        return getattr(self._inner, name)
+
+    def specific_returns(self, start: dt.date, end: dt.date, barrids: list[str]) -> pl.DataFrame:
+        key = frozenset(barrids)
+        covered = self._specific.get(key)
+        if covered is None or start < covered[0] or end > covered[1]:
+            lo = min(start, covered[0]) if covered else start
+            hi = max(end, covered[1]) if covered else end
+            self._specific[key] = (lo, hi, self._inner.specific_returns(lo, hi, barrids))
+        return self._specific[key][2].filter(pl.col("date").is_between(start, end))
+
+    def benchmark_weights(self, start: dt.date, end: dt.date) -> pl.DataFrame:
+        return self._inner.benchmark_weights(start, end)
+
+    def asset_returns(self, start: dt.date, end: dt.date, barrids: list[str]) -> pl.DataFrame:
+        return self._inner.asset_returns(start, end, barrids)
+
+    def factor_returns(self, start: dt.date, end: dt.date) -> pl.DataFrame:
+        return self._inner.factor_returns(start, end)
+
+    def exposures(self, date_: dt.date, barrids: list[str]) -> pl.DataFrame:
+        return self._inner.exposures(date_, barrids)
+
+    def prices(self, start: dt.date, end: dt.date) -> pl.DataFrame:
+        return self._inner.prices(start, end)
+
+    def risk_model(self, date_: dt.date, barrids: list[str]) -> RiskModel:
+        return self._inner.risk_model(date_, barrids)
+
+
+def cached(data: MarketData) -> MarketData:
+    """Wrap ``data`` in :class:`CachedMarketData` unless it already is one."""
+    return data if isinstance(data, CachedMarketData) else CachedMarketData(data)

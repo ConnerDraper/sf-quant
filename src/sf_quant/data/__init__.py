@@ -5,7 +5,7 @@ and retrieving available columns, while keeping internal implementation
 details hidden.
 """
 
-from ._config import env, EnvNotConfiguredError
+from ._config import clear_cache, env, EnvNotConfiguredError
 from .assets import load_assets, load_assets_by_date, get_assets_columns
 from .crsp_daily import load_crsp_daily, get_crsp_daily_columns
 from .crsp_v2_daily import load_crsp_v2_daily, get_crsp_v2_daily_columns
@@ -30,9 +30,17 @@ from .stored_tables import (
     load_composite_alphas,
     load_composite_alphas_by_date,
 )
-from .market import MarketData, SfQuantMarketData, rebalance_dates, trading_days
+from .market import (
+    CachedMarketData,
+    MarketData,
+    SfQuantMarketData,
+    cached,
+    rebalance_dates,
+    trading_days,
+)
 
 __all__ = [
+    "clear_cache",
     "env",
     "EnvNotConfiguredError",
     "load_assets",
@@ -71,8 +79,10 @@ __all__ = [
     "get_alpha_names",
     "load_composite_alphas",
     "load_composite_alphas_by_date",
+    "CachedMarketData",
     "MarketData",
     "SfQuantMarketData",
+    "cached",
     "rebalance_dates",
     "trading_days",
 ]
