@@ -61,19 +61,6 @@ def generate_multi_returns_from_weights(weights: pl.DataFrame) -> pl.DataFrame:
     ... )
     >>> returns = sfp.generate_multi_returns_from_weights(weights)
     >>> returns
-    shape: (6, 3)
-    ┌────────────┬───────────┬────────────┐
-    │ date       ┆ portfolio ┆ return     │
-    │ ---        ┆ ---       ┆ ---        │
-    │ date       ┆ str       ┆ f64        │
-    ╞════════════╪═══════════╪════════════╡
-    │ 2024-01-02 ┆ active    ┆ 0.015432   │
-    │ 2024-01-02 ┆ benchmark ┆ 1.2047e-7  │
-    │ 2024-01-02 ┆ total     ┆ 0.015432   │
-    │ 2024-01-03 ┆ active    ┆ 0.020741   │
-    │ 2024-01-03 ┆ benchmark ┆ 2.4094e-7  │
-    │ 2024-01-03 ┆ total     ┆ 0.020741   │
-    └────────────┴───────────┴────────────┘
     """
     start = weights["date"].min()
     end = weights["date"].max()
@@ -98,11 +85,7 @@ def generate_multi_returns_from_weights(weights: pl.DataFrame) -> pl.DataFrame:
     agg_exprs = []
     agg_exprs.append(pl.col("return").mul("weight").sum().alias("return"))
 
-    result = (
-        joined.group_by("date", "portfolio")
-        .agg(agg_exprs)
-        .sort("date", "portfolio")
-    )
+    result = joined.group_by("date", "portfolio").agg(agg_exprs).sort("date", "portfolio")
     return result
 
 
@@ -156,15 +139,6 @@ def generate_returns_from_weights(weights: pl.DataFrame) -> pl.DataFrame:
     ... )
     >>> returns = sfp.generate_returns_from_weights(weights)
     >>> returns
-    shape: (2, 2)
-    ┌────────────┬────────────┐
-    │ date       ┆ return     │
-    │ ---        ┆ ---        │
-    │ date       ┆ f64        │
-    ╞════════════╪════════════╡
-    │ 2024-01-02 ┆ 0.015432   │
-    │ 2024-01-03 ┆ 0.020741   │
-    └────────────┴────────────┘
     """
     start = weights["date"].min()
     end = weights["date"].max()
@@ -175,12 +149,15 @@ def generate_returns_from_weights(weights: pl.DataFrame) -> pl.DataFrame:
 
     result = (
         joined.group_by("date")
-        .agg([
-            pl.col("return").mul("weight").sum().alias("return"),
-        ])
+        .agg(
+            [
+                pl.col("return").mul("weight").sum().alias("return"),
+            ]
+        )
         .sort("date")
     )
     return result
+
 
 def _forward_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     """

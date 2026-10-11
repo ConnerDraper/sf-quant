@@ -36,21 +36,10 @@ def load_crsp_v2_daily(start: dt.date, end: dt.date, columns: list[str]) -> pl.D
     ...     columns=columns
     ... )
     >>> df.head()
-    shape: (5, 3)
-    ┌────────────┬────────┬───────┐
-    │ date       ┆ permno ┆ ret   │
-    │ ---        ┆ ---    ┆ ---   │
-    │ date       ┆ i64    ┆ f64   │
-    ╞════════════╪════════╪═══════╡
-    │ 2024-01-02 ┆ 10001  ┆ 0.002 │
-    │ 2024-01-03 ┆ 10001  ┆ -0.001│
-    │ 2024-01-04 ┆ 10001  ┆ 0.003 │
-    │ 2024-01-05 ┆ 10001  ┆ 0.000 │
-    │ 2024-01-08 ┆ 10001  ┆ -0.004│
-    └────────────┴────────┴───────┘
     """
     return (
-        crsp_v2_daily_clean().filter(pl.col("date").is_between(start, end))
+        crsp_v2_daily_clean()
+        .filter(pl.col("date").is_between(start, end))
         .sort(["permno", "date"])
         .select(columns)
         .collect()
@@ -62,31 +51,18 @@ def get_crsp_v2_daily_columns() -> str:
     Return the available columns in the CRSP v2 daily dataset.
 
     This function provides a schema of all CRSP v2 daily fields that can be
-    retrieved with :func:`load_crsp_v2_daily`. The output is a string representationPolars DataFrame
-    listing each column name along with its corresponding data type.
+    retrieved with :func:`load_crsp_v2_daily`. The output lists each column name
+    along with its corresponding data type.
 
     Returns
     -------
     str
         A string representation of a polars data frame containing the
-        column names and types for the assets table.
+        column names and types for the CRSP v2 daily table.
 
     Examples
     --------
-    >>> import sf_quant as sf
-    >>> sf.data.get_assets_columns()
-    shape: (30, 2)
-    ┌──────────────────────┬─────────┐
-    │ column               ┆ dtype   │
-    │ ---                  ┆ ---     │
-    │ str                  ┆ str     │
-    ╞══════════════════════╪═════════╡
-    │ date                 ┆ Date    │
-    │ rootid               ┆ String  │
-    │ barrid               ┆ String  │
-    │ issuerid             ┆ String  │
-    │ instrument           ┆ String  │
-    │ ...                  ┆ ...     │
-    └──────────────────────┴─────────┘
+    >>> import sf_quant.data as sfd
+    >>> sfd.get_crsp_v2_daily_columns()
     """
     return crsp_v2_daily_table.columns()

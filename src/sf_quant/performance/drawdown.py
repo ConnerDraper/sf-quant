@@ -1,5 +1,6 @@
 import polars as pl
 
+
 def generate_drawdown_from_returns(returns: pl.DataFrame) -> pl.DataFrame:
     """
     Calculate drawdowns for each portfolio over time.
@@ -16,14 +17,14 @@ def generate_drawdown_from_returns(returns: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: A DataFrame with columns:
             - ``date`` (date): The observation date.
             - ``drawdown`` (float): Drawdown from peak (≤ 0).
-    
+
     Notes
     -----
         - Drawdown is calculated as (current_value / peak_value) - 1
         - Values are ≤ 0, where 0 indicates a new peak
         - Calculated for a single portfolio time series
 
-        
+
     Examples
     --------
     >>> import polars as pl
@@ -39,33 +40,12 @@ def generate_drawdown_from_returns(returns: pl.DataFrame) -> pl.DataFrame:
     >>> returns = sfp.generate_returns_from_weights(weights)
     >>> drawdowns = sfp.generate_drawdown_from_returns(returns)
     >>> drawdowns
-    shape: (2, 2)
-    ┌────────────┬───────────┐
-    │ date       ┆ drawdown  │
-    │ ---        ┆ ---       │
-    │ date       ┆ f64       │
-    ╞════════════╪═══════════╡
-    │ 2024-01-02 ┆ 0.0       │
-    │ 2024-01-03 ┆ -0.016154 │
-    └────────────┴───────────┘
     """
     result = (
         returns.sort("date")
-        .with_columns(
-            pl.col("return")
-            .add(1)
-            .cum_prod()
-            .alias("portfolio_value")
-        )
-        .with_columns(
-            pl.col("portfolio_value")
-            .cum_max()
-            .alias("peak")
-        )
-        .with_columns(
-            (pl.col("portfolio_value") / pl.col("peak") - 1)
-            .alias("drawdown")
-        )
+        .with_columns(pl.col("return").add(1).cum_prod().alias("portfolio_value"))
+        .with_columns(pl.col("portfolio_value").cum_max().alias("peak"))
+        .with_columns((pl.col("portfolio_value") / pl.col("peak") - 1).alias("drawdown"))
         .select("date", "drawdown")
     )
     return result

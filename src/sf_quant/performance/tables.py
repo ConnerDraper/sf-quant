@@ -66,16 +66,6 @@ def generate_multi_returns_summary_table(returns: pl.DataFrame, wide: bool = Tru
     >>> returns = sfp.generate_returns_from_weights(weights)
     >>> summary = sfp.generate_summary_table(returns)
     >>> summary
-    shape: (3, 6)
-    ┌───────────┬───────┬─────────────────┬────────────────┬──────────────────┬────────┐
-    │ Portfolio ┆ Count ┆ Mean Return (%) ┆ Volatility (%) ┆ Total Return (%) ┆ Sharpe │
-    │ ---       ┆ ---   ┆ ---             ┆ ---            ┆ ---              ┆ ---    │
-    │ str       ┆ u32   ┆ f64             ┆ f64            ┆ f64              ┆ f64    │
-    ╞═══════════╪═══════╪═════════════════╪════════════════╪══════════════════╪════════╡
-    │ Active    ┆ 2     ┆ -194.28         ┆ 63.87          ┆ -1.62            ┆ -3.04  │
-    │ Benchmark ┆ 2     ┆ -0.0            ┆ 0.0            ┆ -0.0             ┆ -4.01  │
-    │ Total     ┆ 2     ┆ -194.28         ┆ 63.87          ┆ -1.62            ┆ -3.04  │
-    └───────────┴───────┴─────────────────┴────────────────┴──────────────────┴────────┘
     """
     summary_wide = (
         returns.group_by("portfolio")
@@ -169,14 +159,6 @@ def generate_returns_summary_table(returns: pl.DataFrame) -> pl.DataFrame:
     >>> returns = sfp.generate_returns_from_weights(weights)
     >>> summary = sfp.generate_returns_summary_table(returns)
     >>> summary
-    shape: (1, 5)
-    ┌───────┬─────────────────┬────────────────┬──────────────────┬────────┐
-    │ Count ┆ Mean Return (%) ┆ Volatility (%) ┆ Total Return (%) ┆ Sharpe │
-    │ ---   ┆ ---             ┆ ---            ┆ ---              ┆ ---    │
-    │ u32   ┆ f64             ┆ f64            ┆ f64              ┆ f64    │
-    ╞═══════╪═════════════════╪════════════════╪══════════════════╪════════╡
-    │ 2     ┆ -194.28         ┆ 63.87          ┆ -1.62            ┆ -3.04  │
-    └───────┴─────────────────┴────────────────┴──────────────────┴────────┘
     """
     return (
         returns.select(
@@ -185,12 +167,8 @@ def generate_returns_summary_table(returns: pl.DataFrame) -> pl.DataFrame:
             pl.col("return").std().mul(pl.lit(252).sqrt()).alias("Volatility (%)"),
             pl.col("return").add(1).product().sub(1).mul(100).alias("Total Return (%)"),
         )
-        .with_columns(
-            pl.col("Mean Return (%)").truediv("Volatility (%)").alias("Sharpe")
-        )
-        .with_columns(
-            pl.col("Mean Return (%)", "Volatility (%)").mul(100)
-        )
+        .with_columns(pl.col("Mean Return (%)").truediv("Volatility (%)").alias("Sharpe"))
+        .with_columns(pl.col("Mean Return (%)", "Volatility (%)").mul(100))
         .with_columns(cs.float().round(2))
     )
 
@@ -245,27 +223,16 @@ def generate_drawdown_summary_table(drawdown: pl.DataFrame) -> pl.DataFrame:
     >>> drawdown = sfp.generate_drawdown_from_returns(returns)
     >>> summary = sfp.generate_drawdown_summary_table(drawdown)
     >>> summary
-    shape: (1, 5)
-    ┌───────┬────────────────────┬──────────────────┬──────────────────────┬───────────────────────┐
-    │ Count ┆ Mean Drawdown (%)  ┆ Max Drawdown (%) ┆ Current Drawdown (%) ┆ Longest Drawdown (da… │
-    │ ---   ┆ ---                ┆ ---              ┆ ---                  ┆ ---                   │
-    │ u32   ┆ f64                ┆ f64              ┆ f64                  ┆ i64                   │
-    ╞═══════╪════════════════════╪══════════════════╪══════════════════════╪═══════════════════════╡
-    │ 2     ┆ -0.81              ┆ -1.62            ┆ -1.62                ┆ 1                     │
-    └───────┴────────────────────┴──────────────────┴──────────────────────┴───────────────────────┘
     """
     # Calculate longest drawdown period
     longest_dd = (
-        drawdown
-        .with_columns(
+        drawdown.with_columns(
             # Create groups where drawdown < 0 (in drawdown)
             (pl.col("drawdown") < 0).alias("in_drawdown")
         )
         .with_columns(
             # Create run ID for consecutive drawdown periods
-            (pl.col("in_drawdown") != pl.col("in_drawdown").shift(1))
-            .cum_sum()
-            .alias("run_id")
+            (pl.col("in_drawdown") != pl.col("in_drawdown").shift(1)).cum_sum().alias("run_id")
         )
         .filter(pl.col("in_drawdown"))  # Only keep drawdown periods
         .group_by("run_id")
@@ -285,8 +252,6 @@ def generate_drawdown_summary_table(drawdown: pl.DataFrame) -> pl.DataFrame:
             pl.col("drawdown").min().mul(100).alias("Max Drawdown (%)"),
             pl.col("drawdown").last().mul(100).alias("Current Drawdown (%)"),
         )
-        .with_columns(
-            pl.lit(longest_dd).alias("Longest Drawdown (days)")
-        )
+        .with_columns(pl.lit(longest_dd).alias("Longest Drawdown (days)"))
         .with_columns(cs.float().round(2))
     )

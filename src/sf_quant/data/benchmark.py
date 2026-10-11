@@ -3,6 +3,7 @@ import polars as pl
 
 from ._views import benchmark, benchmark_returns
 
+
 def load_benchmark(start: dt.date, end: dt.date) -> pl.DataFrame:
     """
     Load benchmark data between two dates.
@@ -39,24 +40,9 @@ def load_benchmark(start: dt.date, end: dt.date) -> pl.DataFrame:
     ...     end=end
     ... )
     >>> df.head()
-    shape: (5, 3)
-    ┌────────────┬─────────┬──────────┐
-    │ date       ┆ barrid  ┆ weight   │
-    │ ---        ┆ ---     ┆ ---      │
-    │ date       ┆ str     ┆ f64      │
-    ╞════════════╪═════════╪══════════╡
-    │ 2024-01-02 ┆ USA06Z1 ┆ 0.000019 │
-    │ 2024-01-03 ┆ USA06Z1 ┆ 0.000019 │
-    │ 2024-01-04 ┆ USA06Z1 ┆ 0.000019 │
-    │ 2024-01-05 ┆ USA06Z1 ┆ 0.000019 │
-    │ 2024-01-08 ┆ USA06Z1 ┆ 0.00002  │
-    └────────────┴─────────┴──────────┘
     """
-    return (
-        benchmark().filter(pl.col("date").is_between(start, end))
-        .sort(["barrid", "date"])
-        .collect()
-    )
+    return benchmark().filter(pl.col("date").is_between(start, end)).sort(["barrid", "date"]).collect()
+
 
 def load_benchmark_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     """
@@ -93,18 +79,6 @@ def load_benchmark_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     ...     end=end
     ... )
     >>> df.head()
-    shape: (5, 2)
-    ┌────────────┬──────────────┐
-    │ date       ┆ bmk_return   │
-    │ ---        ┆ ---          │
-    │ date       ┆ f64          │
-    ╞════════════╪══════════════╡
-    │ 2024-01-02 ┆ 0.004521     │
-    │ 2024-01-03 ┆ -0.001234    │
-    │ 2024-01-04 ┆ 0.002876     │
-    │ 2024-01-05 ┆ 0.001543     │
-    │ 2024-01-08 ┆ -0.000612    │
-    └────────────┴──────────────┘
     """
     return (
         benchmark_returns()

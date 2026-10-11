@@ -33,14 +33,6 @@ def load_fama_french(start: dt.date, end: dt.date) -> pl.DataFrame:
     >>> end = dt.date(2024, 12, 31)
     >>> ff_data = sfd.load_fama_french(start=start, end=end)
     >>> ff_data.head()
-    shape: (5, 7)
-    ┌────────────┬────────┬────────┬────────┬────────┬────────┬────────┐
-    │ date       ┆ mkt_rf ┆ smb    ┆ hml    ┆ rmw    ┆ cma    ┆ rf     │
-    │ ---        ┆ ---    ┆ ---    ┆ ---    ┆ ---    ┆ ---    ┆ ---    │
-    │ date       ┆ f64    ┆ f64    ┆ f64    ┆ f64    ┆ f64    ┆ f64    │
-    ╞════════════╪════════╪════════╪════════╪════════╪════════╪════════╡
-    │ 2024-01-02 ┆ 0.0123 ┆ 0.0045 ┆ -0.002 ┆ 0.0010 ┆ 0.0008 ┆ 0.0001 │
-    └────────────┴────────┴────────┴────────┴────────┴────────┴────────┘
     """
     result = fama_french().filter(pl.col("date").is_between(start, end)).collect()
     return result
@@ -59,18 +51,6 @@ def get_fama_french_columns() -> str:
     --------
     >>> import sf_quant.data as sfd
     >>> sfd.get_fama_french_columns()
-    shape: (7, 2)
-    ┌────────┬─────────┐
-    │ column ┆ dtype   │
-    │ ---    ┆ ---     │
-    │ date   ┆ Date    │
-    │ Mkt-RF ┆ Float64 │
-    │ SMB    ┆ Float64 │
-    │ HML    ┆ Float64 │
-    │ RMW    ┆ Float64 │
-    │ CMA    ┆ Float64 │
-    │ RF     ┆ Float64 │
-    └────────┴─────────┘
     """
     pl.Config.set_tbl_rows(-1)
     schema = fama_french().collect_schema()

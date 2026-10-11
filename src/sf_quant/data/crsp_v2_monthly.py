@@ -36,21 +36,10 @@ def load_crsp_v2_monthly(start: dt.date, end: dt.date, columns: list[str]) -> pl
     ...     columns=columns
     ... )
     >>> df.head()
-    shape: (5, 3)
-    ┌────────────┬────────┬───────┐
-    │ date       ┆ permno ┆ ret   │
-    │ ---        ┆ ---    ┆ ---   │
-    │ date       ┆ i64    ┆ f64   │
-    ╞════════════╪════════╪═══════╡
-    │ 2024-01-02 ┆ 10001  ┆ 0.02  │
-    │ 2024-01-03 ┆ 10001  ┆ -0.01 │
-    │ 2024-01-04 ┆ 10001  ┆ 0.03  │
-    │ 2024-01-05 ┆ 10001  ┆ 0.00  │
-    │ 2024-01-08 ┆ 10001  ┆ -0.02 │
-    └────────────┴────────┴───────┘
     """
     return (
-        crsp_v2_monthly_clean().filter(pl.col("date").is_between(start, end))
+        crsp_v2_monthly_clean()
+        .filter(pl.col("date").is_between(start, end))
         .sort(["permno", "date"])
         .select(columns)
         .collect()
@@ -74,14 +63,5 @@ def get_crsp_v2_monthly_columns() -> str:
     --------
     >>> import sf_quant.data as sfd
     >>> sfd.get_crsp_v2_monthly_columns()
-    shape: (n, 2)
-    ┌───────────────┬─────────┐
-    │ column        ┆ dtype   │
-    │ ---           ┆ ---     │
-    │ permno        ┆ Int64   │
-    │ date          ┆ Date    │
-    │ ret           ┆ Float64 │
-    │ ...           ┆ ...     │
-    └───────────────┴─────────┘
     """
     return crsp_v2_monthly_table.columns()

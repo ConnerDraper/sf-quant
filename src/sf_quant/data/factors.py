@@ -6,9 +6,7 @@ from ._tables import factors_table
 from ._factors import factors, style_factors, sector_factors
 
 
-def load_factors(
-    start: dt.date, end: dt.date, factors: list[str] | None = None
-) -> pl.DataFrame:
+def load_factors(start: dt.date, end: dt.date, factors: list[str] | None = None) -> pl.DataFrame:
     """
     Load a Polars DataFrame of factor returns(%) between two dates.
 
@@ -19,7 +17,7 @@ def load_factors(
     end : datetime.date
         End date (inclusive) of the data frame.
     factors : list of str, optional
-        List of factor names to select. 
+        List of factor names to select.
         - If provided, only the specified factors are included in the output.
         - If None (default), all available factors are included.
 
@@ -35,43 +33,22 @@ def load_factors(
     >>> start = dt.date(2024, 1, 1)
     >>> end = dt.date(2024, 12, 31)
     >>> df = sfd.load_factors(
-    ...     start=start, 
+    ...     start=start,
     ...     end=end
     ... )
     >>> df.head()
-    shape: (5, 78)
-    ┌────────────┬─────────────────┬──────────────────┬──────────────────┬───┐
-    │ date       ┆ USSLOWL_AERODEF ┆ USSLOWL_AIRLINES ┆ USSLOWL_ALUMSTEL ┆ … ┆
-    │ ---        ┆ ---             ┆ ---              ┆ ---              ┆   ┆
-    │ date       ┆ f64             ┆ f64              ┆ f64              ┆   ┆
-    ╞════════════╪═════════════════╪══════════════════╪══════════════════╪═══╡
-    │ 2024-01-02 ┆ -0.265309       ┆ -0.791378        ┆ 0.156503         ┆ … ┆
-    │ 2024-01-03 ┆ -0.498421       ┆ -2.233705        ┆ 0.8307382        ┆ … ┆
-    │ 2024-01-04 ┆ 0.086316        ┆ 2.365157         ┆ -0.328195        ┆ … ┆
-    │ 2024-01-05 ┆ -0.209432       ┆ 2.549703         ┆ -0.18945         ┆ … ┆
-    │ 2024-01-08 ┆ -1.414716       ┆ 0.6914087        ┆ -0.973735        ┆ … ┆
-    └────────────┴─────────────────┴──────────────────┴──────────────────┴───┘
     """
     if factors:
-
         return (
             factors_table.scan()
-            .filter(
-                pl.col('date').is_between(start, end)
-            )
-            .sort('date')
-            .select(['date'] + factors)
+            .filter(pl.col("date").is_between(start, end))
+            .sort("date")
+            .select(["date"] + factors)
             .collect()
         )
     else:
-        return (
-        factors_table.scan()
-        .filter(
-            pl.col('date').is_between(start, end)
-        )
-        .sort('date')
-        .collect()
-    )
+        return factors_table.scan().filter(pl.col("date").is_between(start, end)).sort("date").collect()
+
 
 def get_factors_columns() -> str:
     """
@@ -91,27 +68,11 @@ def get_factors_columns() -> str:
     --------
     >>> import sf_quant.data as sfd
     >>> sfd.get_factors_columns()
-    shape: (78, 2)
-    ┌──────────────────┬─────────┐
-    │ column           ┆ dtype   │
-    │ ---              ┆ ---     │
-    │ str              ┆ str     │
-    ╞══════════════════╪═════════╡
-    │ date             ┆ Date    │
-    │ USSLOWL_AERODEF  ┆ Float64 │
-    │ USSLOWL_AIRLINES ┆ Float64 │
-    │ USSLOWL_ALUMSTEL ┆ Float64 │
-    │ USSLOWL_APPAREL  ┆ Float64 │
-    │ USSLOWL_AUTO     ┆ Float64 │
-    │ ...              ┆ ...     │
-    └──────────────────┴─────────┘
     """
     return factors_table.columns()
 
 
-def get_factor_names(
-    type: Literal["style", "sector"] | None = None
-) -> list[str]:
+def get_factor_names(type: Literal["style", "sector"] | None = None) -> list[str]:
     """
     Return the list of available factor names.
 
@@ -150,10 +111,10 @@ def get_factor_names(
     ["USSLOWL_AERODEF", "USSLOWL_AIRLINES", "USSLOWL_BANKS", ...]
     """
 
-    if type == "style": 
+    if type == "style":
         return style_factors
-    if type == "sector": 
+    if type == "sector":
         return sector_factors
-    if type is None: 
+    if type is None:
         return factors
     raise ValueError(f"Invalid type: {type!r}. Must be 'style', 'sector', or None.")

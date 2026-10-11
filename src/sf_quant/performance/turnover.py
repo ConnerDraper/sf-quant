@@ -6,12 +6,7 @@ import matplotlib.pyplot as plt
 def _compute_turnover(weights: pl.DataFrame) -> pl.DataFrame:
     return (
         weights.sort("date", "barrid")
-        .with_columns(
-            pl.col("weight")
-            .sub(pl.col("weight").shift(1))
-            .over("barrid")
-            .alias("diff")
-        )
+        .with_columns(pl.col("weight").sub(pl.col("weight").shift(1)).over("barrid").alias("diff"))
         .group_by("date")
         .agg(pl.col("diff").abs().sum().alias("two_sided_turnover"))
         .sort("date")
@@ -61,14 +56,6 @@ def get_turnover_stats(weights: pl.DataFrame) -> pl.DataFrame:
     ...     'weight': [0.5, 0.6, 0.4, 0.5],
     ... })
     >>> sfp.get_turnover_stats(weights)
-    shape: (1, 3)
-    ┌───────────────┬───────────────┬───────────────┐
-    │ Mean Turnover ┆ Min Turnover  ┆ Max Turnover  │
-    │ ---           ┆ ---           ┆ ---           │
-    │ f64           ┆ f64           ┆ f64           │
-    ╞═══════════════╪═══════════════╪═══════════════╡
-    │ 0.15          ┆ 0.1           ┆ 0.2           │
-    └───────────────┴───────────────┴───────────────┘
     """
     turnover = _compute_turnover(weights)
 
