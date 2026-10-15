@@ -120,8 +120,15 @@ def active_mve_optimizer(
     h = cp.Variable(n_assets)
 
     factor_loadings = factor_exposures.T @ h
-    active_variance = cp.quad_form(factor_loadings, factor_covariance) + cp.sum(
-        cp.multiply(specific_risk, cp.square(h))
+    # Factor risk as an explicit sum of squares, not cp.quad_form: CVXPY's
+    # quad_form rewrite left CLARABEL stuck (InsufficientProgress /
+    # NumericalError) on dates that solve cleanly in this form. The root comes
+    # from an eigendecomposition rather than Cholesky because the loader fills
+    # missing covariances with 0, so F can be singular.
+    eigenvalues, eigenvectors = np.linalg.eigh(factor_covariance)
+    factor_root = eigenvectors * np.sqrt(np.clip(eigenvalues, 0.0, None))
+    active_variance = cp.sum_squares(factor_root.T @ factor_loadings) + cp.sum_squares(
+        cp.multiply(np.sqrt(specific_risk), h)
     )
 
     cvxpy_constraints = [active_variance <= target_active_risk**2]
