@@ -12,6 +12,6 @@ Backtester
    :toctree: backtester
    :nosignatures:
 
-   backtest_sequential
-   backtest_parallel
-   dynamic_backtest_parallel
+   backtest
+   collapse
+   rebalance_dates

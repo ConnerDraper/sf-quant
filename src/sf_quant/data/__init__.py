@@ -6,7 +6,12 @@ details hidden.
 """
 
 from ._config import env, EnvNotConfiguredError
-from .assets import load_assets, load_assets_by_date, get_assets_columns
+from .assets import (
+    load_assets,
+    load_assets_by_date,
+    load_trading_days,
+    get_assets_columns,
+)
 from .crsp_daily import load_crsp_daily, get_crsp_daily_columns
 from .crsp_v2_daily import load_crsp_v2_daily, get_crsp_v2_daily_columns
 from .crsp_monthly import load_crsp_monthly, get_crsp_monthly_columns
@@ -27,6 +32,7 @@ __all__ = [
     "EnvNotConfiguredError",
     "load_assets",
     "load_assets_by_date",
+    "load_trading_days",
     "get_assets_columns",
     "load_crsp_daily",
     "get_crsp_daily_columns",

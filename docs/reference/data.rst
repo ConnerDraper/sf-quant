@@ -14,6 +14,7 @@ Data
 
    load_assets
    load_assets_by_date
+   load_trading_days
    get_assets_columns
    load_crsp_daily
    get_crsp_daily_columns

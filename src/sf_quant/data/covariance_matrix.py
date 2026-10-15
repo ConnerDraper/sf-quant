@@ -7,11 +7,49 @@ from .assets import load_assets_by_date
 from ._factors import factors
 
 
+def _reindex(
+    df: pl.DataFrame, barrids: list[str], *, date_: dt.date, label: str, probe: str
+) -> pl.DataFrame:
+    """
+    Put ``df`` in ``barrids`` row order, raising rather than filling gaps.
+
+    Every array handed to the optimizer has to be in one agreed row order, and a
+    gap can only ever be an upstream data problem. Filling it instead produces a
+    silently wrong input: a missing ``specific_risk`` becomes a riskless asset,
+    which a linear objective will happily load the entire risk budget onto.
+    """
+    out = pl.DataFrame({"barrid": barrids}).join(
+        df, on="barrid", how="left", maintain_order="left"
+    )
+    if out.height != len(barrids):
+        dupes = (
+            out["barrid"]
+            .value_counts()
+            .filter(pl.col("count") > 1)["barrid"]
+            .to_list()
+        )
+        raise ValueError(
+            f"{date_}: {label} table has duplicate rows for barrids {dupes[:10]}"
+        )
+    if out["barrid"].to_list() != list(barrids):
+        raise ValueError(f"{date_}: {label} reindex did not preserve barrid order")
+    if n_missing := out[probe].null_count():
+        missing = out.filter(pl.col(probe).is_null())["barrid"].to_list()
+        raise ValueError(
+            f"{date_}: {label} missing for {n_missing} of {len(barrids)} barrids: "
+            f"{missing[:10]}"
+        )
+    return out
+
+
 def construct_factor_model_components(
     date_: dt.date, barrids: list[str]
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Construct the factor model components for the given assets.
+
+    All three are returned in ``barrids`` order. A barrid with no exposures or
+    no specific risk on ``date_`` raises rather than being filled.
 
     Returns
     -------
@@ -20,17 +58,23 @@ def construct_factor_model_components(
         - factor_covariance: shape (K, K), in decimal space
         - specific_risk: shape (N,), variance in decimal space
     """
-    exposures = _construct_factor_exposure_matrix(date_, barrids).drop("barrid").to_numpy()
-    
+    exposures = (
+        _construct_factor_exposure_matrix(date_, barrids).drop("barrid").to_numpy()
+    )
+
     factor_cov = _construct_factor_covariance_matrix(date_).drop("factor_1").to_numpy()
     factor_cov = factor_cov / 100**2
 
-    barrids_df = pl.DataFrame({"barrid": barrids})
-    sr_df = load_assets_by_date(
-        date_, in_universe=False, columns=["date", "barrid", "specific_risk"]
+    sr_df = _reindex(
+        load_assets_by_date(
+            date_, in_universe=False, columns=["date", "barrid", "specific_risk"]
+        ),
+        barrids,
+        date_=date_,
+        label="specific_risk",
+        probe="specific_risk",
     )
-    sr_df = barrids_df.join(sr_df, on=["barrid"], how="left").fill_null(0)
-    
+
     specific_risk = np.power(sr_df["specific_risk"].to_numpy(), 2) / 100**2
 
     return exposures, factor_cov, specific_risk
@@ -126,11 +170,14 @@ def _construct_factor_exposure_matrix(
         .drop("date")
         .filter(pl.col("barrid").is_in(barrids))
         .fill_null(0)
-        .sort("barrid")
         .select(["barrid"] + factors)
     )
 
-    return exp_mat
+    # Reindex after the fill so a surviving null means "absent from the exposures
+    # table", not "null exposure".
+    return _reindex(
+        exp_mat, barrids, date_=date_, label="exposures", probe=factors[0]
+    )
 
 
 def _construct_factor_covariance_matrix(date_: dt.date) -> pl.DataFrame:
@@ -163,18 +210,16 @@ def _construct_factor_covariance_matrix(date_: dt.date) -> pl.DataFrame:
 
 
 def _construct_specific_risk_matrix(date_: dt.date, barrids: list[str]) -> pl.DataFrame:
-    # Barrids
-    barrids_df = pl.DataFrame({"barrid": barrids})
-
-    # Load
-    sr_df = load_assets_by_date(
-        date_, in_universe=False, columns=["date", "barrid", "specific_risk"]
+    # Load and put in barrids order
+    sr_df = _reindex(
+        load_assets_by_date(
+            date_, in_universe=False, columns=["date", "barrid", "specific_risk"]
+        ),
+        barrids,
+        date_=date_,
+        label="specific_risk",
+        probe="specific_risk",
     )
-
-    # Filter
-    sr_df = barrids_df.join(sr_df, on=["barrid"], how="left").fill_null(
-        0
-    )  # ask Brandon about this.
 
     # Convert vector to diagonal matrix
     diagonal = np.power(np.diag(sr_df["specific_risk"]), 2)

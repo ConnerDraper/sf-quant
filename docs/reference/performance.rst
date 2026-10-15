@@ -12,6 +12,7 @@ Performance
    :toctree: performance
    :nosignatures:
 
+   generate_active_returns_from_weights
    generate_returns_from_weights
    generate_multi_returns_from_weights
    generate_leverage_from_weights

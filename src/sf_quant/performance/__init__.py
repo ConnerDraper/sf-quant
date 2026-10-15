@@ -5,7 +5,11 @@ calculating returns, risk metrics, and visualizing performance, while keeping
 internal computation details hidden.
 """
 
-from .returns import generate_returns_from_weights, generate_multi_returns_from_weights
+from .returns import (
+    generate_active_returns_from_weights,
+    generate_returns_from_weights,
+    generate_multi_returns_from_weights,
+)
 from .leverage import generate_leverage_from_weights
 from .drawdown import generate_drawdown_from_returns
 from .tables import (
@@ -31,6 +35,7 @@ from .turnover import (
 
 __all__ = [
     # Returns
+    "generate_active_returns_from_weights",
     "generate_returns_from_weights",
     "generate_multi_returns_from_weights",
     # Leverage

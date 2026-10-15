@@ -12,11 +12,7 @@ Optimizer
    :toctree: optimizer
    :nosignatures:
 
-   mve_optimizer
-   dynamic_mve_optimizer
-   FullInvestment
+   active_mve_optimizer
    ZeroInvestment
-   LongOnly
-   NoBuyingOnMargin
-   UnitBeta
    ZeroBeta
+   LongOnly

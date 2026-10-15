@@ -4,6 +4,48 @@ import polars as pl
 from ._tables import assets_table
 
 
+def load_trading_days(start: dt.date, end: dt.date) -> pl.Series:
+    """
+    Load the fund trading calendar between two dates.
+
+    These are the dates on which the universe actually traded, which is the
+    index the backtester measures ``lag`` and ``rebalance_period`` against.
+    Deriving the calendar here rather than from a signal's own dates keeps the
+    rebalance grid identical across signals: a signal built on a long rolling
+    window starts hundreds of trading days later than a point-in-time one, and
+    anchoring on that would give the two differently-phased grids.
+
+    Parameters
+    ----------
+    start : datetime.date
+        Start date (inclusive).
+    end : datetime.date
+        End date (inclusive).
+
+    Returns
+    -------
+    polars.Series
+        Sorted, unique ``date`` values. Name is ``date``.
+
+    Examples
+    --------
+    >>> import sf_quant.data as sfd
+    >>> import datetime as dt
+    >>> dates = sfd.load_trading_days(dt.date(2024, 1, 1), dt.date(2024, 1, 10))
+    >>> dates.len()
+    6
+    """
+    return (
+        assets_table.scan()
+        .filter(pl.col("date").is_between(start, end), pl.col("in_universe"))
+        .select("date")
+        .unique()
+        .sort("date")
+        .collect()
+        .get_column("date")
+    )
+
+
 def load_assets(
     start: dt.date, end: dt.date, columns: list[str], in_universe: bool | None = None
 ) -> pl.DataFrame:

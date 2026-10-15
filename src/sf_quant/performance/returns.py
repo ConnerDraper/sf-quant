@@ -1,8 +1,126 @@
 import polars as pl
 from sf_quant.data.assets import load_assets
 from sf_quant.data.benchmark import load_benchmark
+from sf_quant.schema.active_portfolio_schema import ActivePortfolioSchema
 from sf_quant.schema.portfolio_schema import PortfolioSchema
 from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
+
+
+def generate_active_returns_from_weights(
+    weights: ActivePortfolioSchema,
+) -> PortfolioRetSchema:
+    """
+    Generate active returns from active weights on a rebalance grid.
+
+    Each row of the output is the active return earned over one holding period,
+    keyed by the date the portfolio was formed. For a portfolio set at
+    :math:`t_k` and held untouched until :math:`t_{k+1}`, that return is
+
+    .. math::
+
+        r_{active} = \\sum_i h_i \\, r_{i,(t_k, t_{k+1}]}
+
+    where :math:`r_{i,(t_k, t_{k+1}]}` is asset *i*'s compounded return over the
+    period. This is an identity for a buy-and-hold position, so weight drift is
+    already accounted for — there is no need to track it separately.
+
+    Works for any rebalance frequency, including daily: with weights on every
+    trading day each period is one day long.
+
+    Parameters
+    ----------
+    weights : ActivePortfolioSchema
+        Active weights, as returned by :func:`sf_quant.backtester.backtest`.
+        Must include ``date``, ``barrid`` and ``active_weight``.
+
+    Returns
+    -------
+    PortfolioRetSchema
+        One row per completed holding period:
+
+        - ``date`` (date): the formation date that opened the period.
+        - ``return`` (float): active return earned over the period.
+
+    Notes
+    -----
+    - The formation date's own return belongs to the *previous* period, so a
+      portfolio never earns the return of the day it was built. This is what
+      keeps the alignment free of look-ahead.
+    - The final formation date has no closing date and so yields no row; a
+      K-date grid produces K-1 period returns.
+    - A name that delists or leaves the universe mid-period is treated as
+      liquidated at its last observation and flat thereafter: its return is
+      compounded over the days that exist. A name with no observations in the
+      period contributes nothing.
+
+    Examples
+    --------
+    >>> import sf_quant.backtester as sfb
+    >>> import sf_quant.performance as sfp
+    >>> weights = sfb.backtest(grid, target_active_risk=0.05)   # doctest: +SKIP
+    >>> returns = sfp.generate_active_returns_from_weights(weights)   # doctest: +SKIP
+    """
+    formation_dates = weights["date"].unique().sort()
+    if formation_dates.len() < 2:
+        raise ValueError(
+            "need at least two rebalance dates to measure one holding period, got "
+            f"{formation_dates.len()}"
+        )
+
+    daily = (
+        load_assets(
+            start=formation_dates.min(),
+            end=formation_dates.max(),
+            columns=["date", "barrid", "return"],
+            in_universe=True,
+        )
+        .with_columns(pl.col("return").truediv(100))
+        .drop_nulls("return")
+    )
+
+    calendar = pl.DataFrame({"date": daily["date"].unique().sort()}).with_row_index("t")
+
+    # Each trading day belongs to the period opened by the most recent formation
+    # date *strictly* before it. Matching against the day after each formation
+    # date is what makes the backward join strict: a formation date's own return
+    # closes the previous period rather than opening its own.
+    opens = calendar.filter(pl.col("date").is_in(formation_dates.implode())).select(
+        (pl.col("t") + 1).alias("t_open"), pl.col("date").alias("form_date")
+    )
+
+    buckets = (
+        calendar.join_asof(opens, left_on="t", right_on="t_open", strategy="backward")
+        .drop_nulls("form_date")
+        .select("date", "form_date")
+    )
+
+    period_returns = (
+        daily.join(buckets, on="date", how="inner")
+        .group_by("form_date", "barrid")
+        .agg(pl.col("return").add(1).product().sub(1).alias("return"))
+    )
+
+    result = (
+        weights.filter(
+            pl.col("date").is_in(buckets["form_date"].unique().implode())
+        )
+        .join(
+            period_returns,
+            left_on=["date", "barrid"],
+            right_on=["form_date", "barrid"],
+            how="left",
+        )
+        .group_by("date")
+        .agg(
+            pl.col("active_weight")
+            .mul(pl.col("return").fill_null(0.0))
+            .sum()
+            .alias("return")
+        )
+        .sort("date")
+    )
+
+    return PortfolioRetSchema.validate(result)
 
 
 def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfolioRetSchema:
