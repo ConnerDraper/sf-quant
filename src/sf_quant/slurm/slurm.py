@@ -36,7 +36,14 @@ def generate_sbatch_script(config: BacktestConfig, years: list[int]) -> str:
 #SBATCH --mail-type={config.slurm.mail_type}
 {exclusive_line}
 
-export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+# Don't let a crashing worker dump a multi-hundred-MB core file per task --
+# these are shared, often-unattended nodes, and a crash storm shouldn't also
+# become a disk-I/O storm.
+ulimit -c 0
+
+# backtest() runs one single-threaded solve per worker process; keep BLAS from
+# spawning its own threads on top of that.
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 
 DATA_PATH="{config.data_path}"
 OUTPUT_DIR="{config.output_dir}"
@@ -58,7 +65,7 @@ year=${{years[$SLURM_ARRAY_TASK_ID]}}
 
 source {config.project_root}/.venv/bin/activate
 echo "Running year=$year"
-srun python {worker_script} \\
+srun --ntasks=1 --propagate=CORE python {worker_script} \\
     --data_path "$DATA_PATH" \\
     --year "$year" \\
     --start {config.start.isoformat()} \\
