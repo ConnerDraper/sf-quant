@@ -3,9 +3,8 @@ import os
 from collections.abc import Sequence
 
 import polars as pl
-import ray
 import tqdm
-from ray.experimental import tqdm_ray
+from joblib import Parallel, delayed
 
 from sf_quant.data.covariance_matrix import construct_factor_model_components
 from sf_quant.optimizer.constraints import DEFAULT_CONSTRAINTS, Constraint, ZeroBeta
@@ -51,20 +50,6 @@ def _construct_portfolio(
     ).select("date", "barrid", "active_weight", "benchmark_weight", "active_risk")
 
 
-@ray.remote
-def _construct_portfolio_remote(
-    date_: dt.date,
-    data: pl.DataFrame,
-    constraints: Sequence[Constraint],
-    target_active_risk: float,
-    progress_bar: tqdm_ray.tqdm | None = None,
-) -> pl.DataFrame:
-    portfolio = _construct_portfolio(date_, data, constraints, target_active_risk)
-    if progress_bar is not None:
-        progress_bar.update.remote(1)
-    return portfolio
-
-
 def backtest(
     data: pl.DataFrame,
     constraints: Sequence[Constraint] = DEFAULT_CONSTRAINTS,
@@ -93,9 +78,11 @@ def backtest(
     target_active_risk : float, default 0.05
         Annualized tracking-error budget, in decimal.
     n_cpus : int, optional
-        CPUs for Ray, capped at the number of distinct dates. ``None`` uses
-        ``os.cpu_count()``. Pass ``1`` to run in-process without Ray, which is
-        what you want under a debugger.
+        Worker processes, capped at the number of distinct dates. ``None`` uses
+        ``os.cpu_count()``. Pass ``1`` to run in-process, which is what you
+        want under a debugger. Dates are solved in parallel with joblib's loky
+        process pool; see ``research/parallel-backends`` for why it beat Ray
+        and a thread pool.
 
     Returns
     -------
@@ -139,41 +126,27 @@ def backtest(
     if data.is_empty():
         raise ValueError("data is empty; nothing to optimize")
 
-    dates = data["date"].unique().sort().to_list()
+    # Each task gets only its own date's rows, so workers aren't sent the
+    # whole panel once per date.
+    parts = {key[0]: part for key, part in data.partition_by("date", as_dict=True).items()}
+    dates = sorted(parts)
+    n_cpus = min(len(dates), n_cpus or os.cpu_count())
 
     if n_cpus == 1:
         portfolio_list = [
-            _construct_portfolio(date_, data, constraints, target_active_risk)
+            _construct_portfolio(date_, parts[date_], constraints, target_active_risk)
             for date_ in tqdm.tqdm(dates, desc="Computing portfolios")
         ]
     else:
-        n_cpus = min(len(dates), n_cpus or os.cpu_count())
-        # Empty runtime_env = no environment management. Workers use the parent's
-        # Python directly, which stops Ray trying to rebuild packages on air-gapped
-        # clusters.
-        ray.init(ignore_reinit_error=True, num_cpus=n_cpus, runtime_env={})
-
-        remote_tqdm = ray.remote(tqdm_ray.tqdm)
-        progress_bar = remote_tqdm.remote(
-            total=len(dates), desc=f"Computing portfolios with {n_cpus} cpus"
+        # joblib's default backend is loky: a process pool, so each solve's
+        # Python-side setup runs in parallel too. parallel_config() can swap it.
+        tasks = Parallel(n_jobs=n_cpus, return_as="generator")(
+            delayed(_construct_portfolio)(date_, parts[date_], constraints, target_active_risk)
+            for date_ in dates
         )
-
-        try:
-            portfolio_list = ray.get(
-                [
-                    _construct_portfolio_remote.remote(
-                        date_=date_,
-                        data=data,
-                        constraints=constraints,
-                        target_active_risk=target_active_risk,
-                        progress_bar=progress_bar,
-                    )
-                    for date_ in dates
-                ]
-            )
-        finally:
-            progress_bar.close.remote()
-            ray.shutdown()
+        portfolio_list = list(
+            tqdm.tqdm(tasks, total=len(dates), desc=f"Computing portfolios with {n_cpus} workers")
+        )
 
     return ActivePortfolioSchema.validate(
         pl.concat(portfolio_list).sort("date", "barrid")
