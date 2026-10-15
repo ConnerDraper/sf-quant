@@ -1693,6 +1693,7 @@ name = "sf-quant"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "cvxpy" },
     { name = "dataframely" },
     { name = "ipywidgets" },
@@ -1701,6 +1702,7 @@ dependencies = [
     { name = "polars" },
     { name = "polars-ols" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "ray" },
     { name = "seaborn" },
     { name = "statsmodels" },
@@ -1719,6 +1721,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.1.0" },
     { name = "cvxpy", specifier = ">=1.7.2" },
     { name = "dataframely", specifier = ">=1.14.0" },
     { name = "ipywidgets", specifier = ">=8.1.8" },
@@ -1727,6 +1730,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.32.3" },
     { name = "polars-ols", specifier = ">=0.3.5" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ray", specifier = ">=2.49.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "statsmodels", specifier = ">=0.14.0" },

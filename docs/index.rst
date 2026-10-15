@@ -13,6 +13,7 @@ Silver Fund Quant documentation
    reference/data
    reference/optimizer
    reference/backtester
+   reference/slurm
    reference/performance
    reference/research
 
