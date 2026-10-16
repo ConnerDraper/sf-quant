@@ -148,3 +148,20 @@ def test_covariance_matrix_is_the_factor_model(lake):
 
     B, F, D = sfd.construct_factor_model_components(date, BARRIDS)
     np.testing.assert_allclose(B @ F @ B.T + np.diag(D), expected, rtol=1e-12)
+
+
+def test_by_date_loaders_read_only_the_dates_year(lake, monkeypatch):
+    from sf_quant.data._tables import Table
+
+    scanned = []
+    original = Table.scan
+    monkeypatch.setattr(
+        Table, "scan", lambda self, year=None: scanned.append((self._name, year)) or original(self, year)
+    )
+    date = DATES[4]
+    for in_universe in (True, False):
+        assert sfd.load_assets_by_date(date, in_universe, ["barrid"]).height > 0
+    for load in (sfd.load_signals_by_date, sfd.load_scores_by_date, sfd.load_alphas_by_date):
+        for names in (None, ["momentum"]):
+            assert load(date, names).height > 0
+    assert scanned and all(year == date.year for _, year in scanned)

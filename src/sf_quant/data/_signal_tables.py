@@ -19,9 +19,7 @@ def load_range(table: Table, start: dt.date, end: dt.date, names: list[str] | No
 
 
 def load_date(table: Table, date_: dt.date, names: list[str] | None) -> pl.DataFrame:
-    # Without names, only the date's year file is scanned; with names, every
-    # year's file is, as before.
-    frame = table.scan(date_.year if names is None else None).filter(pl.col("date").eq(date_))
+    frame = table.scan(date_.year).filter(pl.col("date").eq(date_))
     if names is not None:
         frame = frame.filter(pl.col("signal_name").is_in(names))
     return frame.sort(["barrid", "date"]).collect()
