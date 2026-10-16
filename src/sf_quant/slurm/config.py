@@ -1,7 +1,7 @@
 """Configuration for SLURM-orchestrated backtests."""
 
 import datetime as dt
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Self
 
@@ -109,27 +109,5 @@ class BacktestConfig:
 
     def to_yaml(self, path: str | Path) -> None:
         """Save configuration to a YAML file."""
-        data = {
-            "signal_name": self.signal_name,
-            "data_path": self.data_path,
-            "start": self.start,
-            "end": self.end,
-            "project_root": self.project_root,
-            "byu_email": self.byu_email,
-            "target_active_risk": self.target_active_risk,
-            "constraints": self.constraints,
-            "lag": self.lag,
-            "rebalance_period": self.rebalance_period,
-            "slurm": {
-                "n_cpus": self.slurm.n_cpus,
-                "mem": self.slurm.mem,
-                "time": self.slurm.time,
-                "mail_type": self.slurm.mail_type,
-                "max_concurrent_jobs": self.slurm.max_concurrent_jobs,
-                "exclusive": self.slurm.exclusive,
-            },
-            "output_dir": self.output_dir,
-            "logs_dir": self.logs_dir,
-        }
         with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(asdict(self), f, default_flow_style=False, sort_keys=False)
