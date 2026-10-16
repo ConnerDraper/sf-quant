@@ -131,25 +131,10 @@ def generate_alpha_ics(
     if m not in {"pearson", "rank"}:
         raise ValueError("method must be 'pearson' or 'rank'")
 
-    if m == "pearson":
-        ic = (
-            df.group_by("date")
-              .agg(
-                  pl.len().alias("n"),
-                  pl.corr("alpha", "window_return").alias("ic"),
-              )
-        )
-    else:  # rank
-        ranked = df.with_columns(
-            pl.col("alpha").rank(method="average").over("date").alias("alpha_r"),
-            pl.col("window_return").rank(method="average").over("date").alias("ret_r"),
-        )
-        ic = (
-            ranked.group_by("date")
-                .agg(
-                    pl.len().alias("n"),
-                    pl.corr("alpha_r", "ret_r").alias("ic"),
-                )
-        )
+    # Spearman ranks ties by their average, as a rank IC should.
+    ic = df.group_by("date").agg(
+        pl.len().alias("n"),
+        pl.corr("alpha", "window_return", method="spearman" if m == "rank" else "pearson").alias("ic"),
+    )
 
     return ic.select("date", "ic", "n")
