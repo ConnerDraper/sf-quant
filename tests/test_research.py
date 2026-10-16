@@ -4,7 +4,6 @@ import datetime as dt
 
 import numpy as np
 import polars as pl
-import polars_ols  # noqa: F401 -- registers .least_squares, which ff_regression never imports
 
 import sf_quant.research.ff_regression as ff_module
 from sf_quant.research import run_quantile_ff_regression
