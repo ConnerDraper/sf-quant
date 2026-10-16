@@ -46,3 +46,15 @@ def test_window_never_reaches_into_another_security():
     rets = frame({"A": [0.01] * 5, "B": [0.02] * 5}, "return")
     out = generate_alpha_ics(alphas, rets, method="pearson", window=2)
     assert out["date"].max() == DATES[2]
+
+
+def test_rank_ic_averages_tied_ranks():
+    """Ties in both alpha and return, checked against scipy's Spearman."""
+    from scipy.stats import spearmanr
+
+    alpha = {"A": 1.0, "B": 1.0, "C": 2.0, "D": 3.0, "E": 3.0}
+    next_day = {"A": 0.01, "B": 0.02, "C": 0.02, "D": -0.01, "E": 0.03}
+    alphas = frame({b: [alpha[b]] * 5 for b in alpha}, "alpha")
+    rets = frame({b: [0.0, next_day[b], 0.0, 0.0, 0.0] for b in alpha}, "return")
+    expected = spearmanr(list(alpha.values()), list(next_day.values())).statistic
+    assert ic_on(alphas, rets, DATES[0], method="rank", window=1) == pytest.approx(expected)
