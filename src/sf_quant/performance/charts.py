@@ -79,23 +79,7 @@ def generate_returns_chart(
 
     sns.lineplot(returns_wide, x="date", y="cumulative_return")
 
-    plt.suptitle(title)
-    plt.title(subtitle)
-
-    plt.xlabel(None)
-
-    if log_scale:
-        plt.ylabel("Cumulative Log Returns (%)")
-    else:
-        plt.ylabel("Cumulative Returns (%)")
-
-    plt.grid()
-    plt.tight_layout()
-
-    if file_name is not None:
-        plt.savefig(file_name)
-    else:
-        plt.show()
+    _finish(title, subtitle, "Cumulative Log Returns (%)" if log_scale else "Cumulative Returns (%)", file_name)
 
 def generate_multi_returns_chart(
     returns: MultiPortfolioRetSchema,
@@ -173,23 +157,7 @@ def generate_multi_returns_chart(
 
     sns.lineplot(returns_wide, x="date", y="cumulative_return", hue="label")
 
-    plt.suptitle(title)
-    plt.title(subtitle)
-
-    plt.xlabel(None)
-
-    if log_scale:
-        plt.ylabel("Cumulative Log Returns (%)")
-    else:
-        plt.ylabel("Cumulative Returns (%)")
-
-    plt.grid()
-    plt.tight_layout()
-
-    if file_name is not None:
-        plt.savefig(file_name)
-    else:
-        plt.show()
+    _finish(title, subtitle, "Cumulative Log Returns (%)" if log_scale else "Cumulative Returns (%)", file_name)
 
 def generate_leverage_chart(
     leverage: LeverageSchema,
@@ -237,19 +205,7 @@ def generate_leverage_chart(
 
     sns.lineplot(leverage_wide, x="date", y="leverage")
 
-    plt.suptitle(title)
-    plt.title(subtitle)
-
-    plt.xlabel(None)
-    plt.ylabel("Leverage")
-
-    plt.grid()
-    plt.tight_layout()
-
-    if file_name is not None:
-        plt.savefig(file_name)
-    else:
-        plt.show()
+    _finish(title, subtitle, "Leverage", file_name)
 
 def generate_drawdown_chart(
     drawdowns: DrawdownSchema,
@@ -298,19 +254,7 @@ def generate_drawdown_chart(
 
     sns.lineplot(drawdowns_wide, x="date", y="drawdown")
 
-    plt.suptitle(title)
-    plt.title(subtitle)
-
-    plt.xlabel(None)
-    plt.ylabel("Drawdown (%)")
-
-    plt.grid()
-    plt.tight_layout()
-
-    if file_name is not None:
-        plt.savefig(file_name)
-    else:
-        plt.show()
+    _finish(title, subtitle, "Drawdown (%)", file_name)
 
 
 def generate_ic_chart(
@@ -377,8 +321,21 @@ def generate_ic_chart(
     else:
         plt.ylabel('Cumulative Rank IC')
 
-    plt.tight_layout()
+    _save_or_show(file_name)
 
+
+def _finish(title: str, subtitle: str | None, ylabel: str, file_name: str | None) -> None:
+    """Title, label, and grid a chart, then save or show it."""
+    plt.suptitle(title)
+    plt.title(subtitle)
+    plt.xlabel(None)
+    plt.ylabel(ylabel)
+    plt.grid()
+    _save_or_show(file_name)
+
+
+def _save_or_show(file_name: str | None) -> None:
+    plt.tight_layout()
     if file_name is not None:
         plt.savefig(file_name)
     else:
