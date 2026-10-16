@@ -1,7 +1,7 @@
 import datetime as dt
 import polars as pl
 
-from ._views import benchmark, benchmark_returns
+from ._views import benchmark
 
 def load_benchmark(start: dt.date, end: dt.date) -> pl.DataFrame:
     """
@@ -107,7 +107,7 @@ def load_benchmark_returns(start: dt.date, end: dt.date) -> pl.DataFrame:
     └────────────┴──────────────┘
     """
     return (
-        benchmark_returns()
+        benchmark("return")
         .filter(pl.col("date").is_between(start, end))
         .group_by("date")
         .agg((pl.col("weight") * pl.col("return")).sum().alias("bmk_return"))

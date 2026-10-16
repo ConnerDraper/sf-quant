@@ -51,7 +51,8 @@ def crsp_clean(table: Table, monthly: bool) -> pl.LazyFrame:
     )
 
 
-def benchmark():
+def benchmark(*columns: str) -> pl.LazyFrame:
+    """Cap weights over the universe on each date, plus any asset ``columns``."""
     return (
         assets_table.scan()
         .filter(pl.col('in_universe'))
@@ -62,22 +63,7 @@ def benchmark():
             .truediv(pl.col("market_cap").sum())
             .over("date")
             .alias("weight"),
-        )
-    )
-
-
-def benchmark_returns():
-    return (
-        assets_table.scan()
-        .filter(pl.col('in_universe'))
-        .select(
-            "date",
-            "barrid",
-            pl.col("market_cap")
-            .truediv(pl.col("market_cap").sum())
-            .over("date")
-            .alias("weight"),
-            "return",
+            *columns,
         )
     )
 
