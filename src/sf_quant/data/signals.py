@@ -1,6 +1,7 @@
 import datetime as dt
 import polars as pl
 
+from ._signal_tables import load_date, load_range, signal_names
 from ._tables import signals_table
 
 
@@ -50,24 +51,7 @@ def load_signals(
     │ 2022-01-03 ┆ USAA181 ┆ momentum    ┆ 0.183556     │
     └────────────┴─────────┴─────────────┴──────────────┘
     """
-    if names is not None:
-        return (
-            signals_table.scan()
-            .filter(
-                pl.col("date").is_between(start, end),
-                pl.col("signal_name").is_in(names),
-            )
-            .sort(["barrid", "date"])
-            .collect()
-        )
-
-    else:
-        return (
-            signals_table.scan()
-            .filter(pl.col("date").is_between(start, end))
-            .sort(["barrid", "date"])
-            .collect()
-        )
+    return load_range(signals_table, start, end, names)
 
 
 def load_signals_by_date(
@@ -112,23 +96,7 @@ def load_signals_by_date(
     │ 2022-01-03 ┆ USAA181 ┆ momentum    ┆ 0.183556     │
     └────────────┴─────────┴─────────────┴──────────────┘
     """
-    if names is not None:
-        return (
-            signals_table.scan()
-            .filter(
-                pl.col("date").eq(date_),
-                pl.col("signal_name").is_in(names),
-            )
-            .sort(["barrid", "date"])
-            .collect()
-        )
-    else:
-        return (
-            signals_table.scan(date_.year)
-            .filter(pl.col("date").eq(date_))
-            .sort(["barrid", "date"])
-            .collect()
-        )
+    return load_date(signals_table, date_, names)
 
 
 def get_signal_names() -> list[str]:
@@ -146,10 +114,4 @@ def get_signal_names() -> list[str]:
     >>> sfd.get_signal_names()
     ["momentum", "reversal", ...]
     """
-    return (
-        signals_table.scan()
-        .select("signal_name")
-        .unique()
-        .collect()["signal_name"]
-        .to_list()
-    )
+    return signal_names(signals_table)

@@ -1,6 +1,7 @@
 import datetime as dt
 import polars as pl
 
+from ._signal_tables import load_date, load_range, signal_names
 from ._tables import alphas_table
 
 
@@ -50,24 +51,7 @@ def load_alphas(
     │ 2023-01-05 ┆ USA06Z1 ┆ momentum    ┆ -17.06099   │
     └────────────┴─────────┴─────────────┴─────────────┘
     """
-    if names is not None:
-        return (
-            alphas_table.scan()
-            .filter(
-                pl.col("date").is_between(start, end),
-                pl.col("signal_name").is_in(names),
-            )
-            .sort(["barrid", "date"])
-            .collect()
-        )
-
-    else:
-        return (
-            alphas_table.scan()
-            .filter(pl.col("date").is_between(start, end))
-            .sort(["barrid", "date"])
-            .collect()
-        )
+    return load_range(alphas_table, start, end, names)
 
 
 def load_alphas_by_date(
@@ -112,23 +96,7 @@ def load_alphas_by_date(
     │ 2023-01-03 ┆ USA06Z1 ┆ momentum    ┆ -17.06099   │
     └────────────┴─────────┴─────────────┴─────────────┘
     """
-    if names is not None:
-        return (
-            alphas_table.scan()
-            .filter(
-                pl.col("date").eq(date_),
-                pl.col("signal_name").is_in(names),
-            )
-            .sort(["barrid", "date"])
-            .collect()
-        )
-    else:
-        return (
-            alphas_table.scan(date_.year)
-            .filter(pl.col("date").eq(date_))
-            .sort(["barrid", "date"])
-            .collect()
-        )
+    return load_date(alphas_table, date_, names)
 
 
 def get_alpha_names() -> list[str]:
@@ -146,10 +114,4 @@ def get_alpha_names() -> list[str]:
     >>> sfd.get_alpha_names()
     ["momentum", "reversal", ...]
     """
-    return (
-        alphas_table.scan()
-        .select("signal_name")
-        .unique()
-        .collect()["signal_name"]
-        .to_list()
-    )
+    return signal_names(alphas_table)
