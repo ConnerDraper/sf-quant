@@ -178,21 +178,12 @@ def generate_returns_summary_table(
     >>> returns = sfp.generate_returns_from_weights(weights)   # doctest: +SKIP
     >>> sfp.generate_returns_summary_table(returns, risk_free=0.02)   # doctest: +SKIP
     """
-    return (
-        returns.select(
-            pl.col("date").n_unique().alias("Count"),
-            pl.col("return").mean().mul(periods_per_year).alias("Mean Return (%)"),
-            pl.col("return").std().mul(pl.lit(periods_per_year).sqrt()).alias("Volatility (%)"),
-            pl.col("return").add(1).product().sub(1).mul(100).alias("Total Return (%)"),
-        )
-        .with_columns(
-            pl.col("Mean Return (%)").sub(risk_free).truediv("Volatility (%)").alias("Sharpe")
-        )
-        .with_columns(
-            pl.col("Mean Return (%)", "Volatility (%)").mul(100)
-        )
-        .with_columns(cs.float().round(2))
-    )
+    # One portfolio, not named "active", so the risk-free rate applies.
+    return generate_multi_returns_summary_table(
+        returns.with_columns(pl.lit("portfolio").alias("portfolio")),
+        periods_per_year=periods_per_year,
+        risk_free=risk_free,
+    ).drop("Portfolio")
 
 
 def generate_leverage_summary_table(leverage: LeverageSchema) -> pl.DataFrame:
