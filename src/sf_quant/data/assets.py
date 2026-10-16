@@ -98,26 +98,10 @@ def load_assets(
     │ 2024-01-08 ┆ USA06Z1 ┆ 8.22  │
     └────────────┴─────────┴───────┘
     """
+    frame = assets_table.scan().filter(pl.col("date").is_between(start, end))
     if in_universe:
-        return (
-            assets_table.scan()
-            .filter(
-                pl.col("date").is_between(start, end),
-                pl.col('in_universe')
-            )
-            .sort(["barrid", "date"])
-            .select(columns)
-            .collect()
-        )
-
-    else:
-        return (
-            assets_table.scan()
-            .filter(pl.col("date").is_between(start, end))
-            .sort(["barrid", "date"])
-            .select(columns)
-            .collect()
-        )
+        frame = frame.filter(pl.col("in_universe"))
+    return frame.sort(["barrid", "date"]).select(columns).collect()
 
 
 def load_assets_by_date(
@@ -168,25 +152,11 @@ def load_assets_by_date(
     │ 2024-01-03 ┆ USA11I1 ┆ 43.55 │
     └────────────┴─────────┴───────┘
     """
+    # The universe query scans every year's file, the other only the date's year.
+    frame = assets_table.scan(None if in_universe else date_.year).filter(pl.col("date").eq(date_))
     if in_universe:
-        return (
-            assets_table.scan()
-            .filter(
-                pl.col("date").eq(date_),
-                pl.col('in_universe')
-            )
-            .sort(["barrid", "date"])
-            .select(columns)
-            .collect()
-        )
-    else:
-        return (
-            assets_table.scan(date_.year)
-            .filter(pl.col("date").eq(date_))
-            .sort(["barrid", "date"])
-            .select(columns)
-            .collect()
-        )
+        frame = frame.filter(pl.col("in_universe"))
+    return frame.sort(["barrid", "date"]).select(columns).collect()
 
 
 def get_assets_columns() -> str:

@@ -52,26 +52,9 @@ def load_factors(
     │ 2024-01-08 ┆ -1.414716       ┆ 0.6914087        ┆ -0.973735        ┆ … ┆
     └────────────┴─────────────────┴──────────────────┴──────────────────┴───┘
     """
-    if factors:
-
-        return (
-            factors_table.scan()
-            .filter(
-                pl.col('date').is_between(start, end)
-            )
-            .sort('date')
-            .select(['date'] + factors)
-            .collect()
-        )
-    else:
-        return (
-        factors_table.scan()
-        .filter(
-            pl.col('date').is_between(start, end)
-        )
-        .sort('date')
-        .collect()
-    )
+    frame = factors_table.scan().filter(pl.col("date").is_between(start, end)).sort("date")
+    # An empty list is falsy, so it selects every factor, like None.
+    return (frame.select(["date"] + factors) if factors else frame).collect()
 
 def get_factors_columns() -> str:
     """
