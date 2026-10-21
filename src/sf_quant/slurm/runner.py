@@ -1,6 +1,7 @@
 """Backtest runner."""
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 import polars as pl
@@ -51,8 +52,9 @@ class BacktestRunner:
         self,
         data: pl.DataFrame | None = None,
         dry_run: bool = False,
-    ) -> None:
-        """Submit the backtest job to SLURM.
+        after: Sequence[str | None] | None = None,
+    ) -> str | None:
+        """Submit the backtest job to SLURM; return its job id.
 
         Years come from ``config.start``/``config.end`` rather than from the
         alpha file, so the array shape does not shift when the data vintage
@@ -61,6 +63,10 @@ class BacktestRunner:
         Args:
             data: Optional DataFrame to write to ``config.data_path`` first.
             dry_run: If True, print the script instead of submitting.
+            after: Job ids to wait for (``--dependency=afterok``).
+
+        Returns:
+            The array job's id, or None on a dry run.
         """
         self.prepare(data)
 
@@ -77,10 +83,29 @@ class BacktestRunner:
         print(f"Output directory: {self.config.output_dir}")
 
         script = generate_sbatch_script(self.config, years)
-        result = submit_job(script, dry_run=dry_run)
+        job_id = submit_job(script, dry_run=dry_run, after=after)
+        if job_id is not None:
+            print(f"Submitted job {job_id}")
+        return job_id
 
-        if result is not None:
-            print("Job submitted successfully!")
-            print(f"sbatch output: {result.stdout}")
-            if result.stderr:
-                print(f"sbatch stderr: {result.stderr}")
+
+def submit_sweep(
+    configs: Sequence[BacktestConfig],
+    dry_run: bool = False,
+    after: Sequence[str | None] | None = None,
+) -> list[str | None]:
+    """Queue one backtest array job per config; return their job ids.
+
+    Every job waits for ``after``. On a dry run only the first script is
+    printed in full, and the ids are None.
+    """
+    ids = []
+    for i, config in enumerate(configs):
+        runner = BacktestRunner(config)
+        if dry_run and i > 0:
+            runner.prepare()
+            ids.append(None)
+            continue
+        ids.append(runner.submit(dry_run=dry_run, after=after))
+    print(f"{'Would queue' if dry_run else 'Queued'} {len(configs)} backtest jobs")
+    return ids
