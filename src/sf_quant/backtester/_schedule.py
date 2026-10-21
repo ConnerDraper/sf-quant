@@ -151,3 +151,52 @@ def collapse(
         collapsed = collapsed.with_columns(pl.col("benchmark_weight").fill_null(0.0))
 
     return collapsed
+
+
+def rebalance_phases(
+    weights: pl.DataFrame, *, dates: pl.Series, rebalance_period: int
+) -> list[pl.DataFrame]:
+    """
+    Every starting day of a rebalance period, derived from daily weights.
+
+    Each date's solve depends only on that date's alpha, risk model, benchmark
+    and beta, never on what was held the day before. So the portfolio a
+    ``rebalance_period=N`` run holds on a rebalance date *is* the daily
+    portfolio on that date, and an N-day run needs no solves of its own: keep
+    the daily weights every N days.
+
+    Which day the grid starts on matters (different trades, different
+    Sharpe), and one start gives few holding periods at large N. So this
+    returns all N phases. Phase p keeps ``rebalance_dates(dates[p:], N)``,
+    exactly the grid a direct run started at ``dates[p]`` would solve, as
+    anchored by :func:`collapse`.
+
+    Parameters
+    ----------
+    weights : pl.DataFrame
+        Daily (``rebalance_period=1``) weights from
+        :func:`sf_quant.backtester.backtest`.
+    dates : pl.Series
+        The full trading-day calendar the daily run was built on.
+    rebalance_period : int
+        Trading days between rebalances.
+
+    Returns
+    -------
+    list[pl.DataFrame]
+        ``rebalance_period`` frames, phase 0 first, each with the columns of
+        ``weights``. Average their statistics to summarize the period.
+
+    Examples
+    --------
+    >>> import sf_quant.backtester as sfb
+    >>> import sf_quant.performance as sfp
+    >>> phases = sfb.rebalance_phases(daily, dates=dates, rebalance_period=21)   # doctest: +SKIP
+    >>> sharpes = [sfp.generate_returns_summary_table(  # doctest: +SKIP
+    ...     sfp.generate_active_returns_from_weights(w))["Sharpe"].item() for w in phases]
+    """
+    calendar = dates.unique().sort()
+    return [
+        weights.filter(pl.col("date").is_in(rebalance_dates(calendar[phase:], rebalance_period).implode()))
+        for phase in range(rebalance_period)
+    ]

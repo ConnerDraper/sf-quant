@@ -3,7 +3,7 @@ import datetime as dt
 import polars as pl
 import pytest
 
-from sf_quant.backtester import collapse, rebalance_dates
+from sf_quant.backtester import collapse, rebalance_dates, rebalance_phases
 
 # Ten consecutive weekdays, two assets. alpha encodes the day index so the test
 # can assert exactly which date a value travelled from.
@@ -150,3 +150,17 @@ def test_null_benchmark_weight_filled_with_zero():
 def test_negative_lag_rejected():
     with pytest.raises(ValueError, match="lag must be >= 0"):
         collapse(panel(), dates=CALENDAR, lag=-1).collect()
+
+
+@pytest.mark.parametrize("period", [1, 3, 4])
+def test_phases_are_the_grids_a_direct_run_would_solve(period):
+    daily = collapse(panel(), dates=CALENDAR).collect()
+    phases = rebalance_phases(daily, dates=CALENDAR, rebalance_period=period)
+
+    assert len(phases) == period
+    for p, frame in enumerate(phases):
+        direct = collapse(panel(), dates=CALENDAR[p:], rebalance_period=period).collect()
+        assert frame.sort("date", "barrid").equals(direct.select(daily.columns).sort("date", "barrid"))
+    # Together the phases use every day exactly once.
+    days = sorted(d for frame in phases for d in frame["date"].unique().to_list())
+    assert days == DATES

@@ -1,4 +1,4 @@
-from ._schedule import collapse, rebalance_dates
-from .backtest import backtest
+from ._schedule import collapse, rebalance_dates, rebalance_phases
+from .backtest import attach_beta_and_benchmark, backtest
 
-__all__ = ["backtest", "collapse", "rebalance_dates"]
+__all__ = ["attach_beta_and_benchmark", "backtest", "collapse", "rebalance_dates", "rebalance_phases"]

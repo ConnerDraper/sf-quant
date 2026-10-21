@@ -81,3 +81,57 @@ def test_one_portfolio_per_date_with_every_name():
     assert out.select("date", "barrid").equals(expected)
     sums = out.group_by("date").agg(pl.col("active_weight").sum())["active_weight"]
     assert np.allclose(sums.to_numpy(), 0.0, atol=1e-7)
+
+
+def lake_alphas() -> pl.DataFrame:
+    """An alpha on every (date, barrid) of the synthetic lake, in or out of universe."""
+    from conftest import BARRIDS as LAKE_BARRIDS, DATES as LAKE_DATES
+
+    rng = np.random.default_rng(2)
+    return pl.DataFrame(
+        {
+            "date": [d for d in LAKE_DATES for _ in LAKE_BARRIDS],
+            "barrid": LAKE_BARRIDS * len(LAKE_DATES),
+            "alpha": rng.normal(scale=0.02, size=len(LAKE_DATES) * len(LAKE_BARRIDS)),
+        }
+    )
+
+
+def test_attach_joins_beta_and_benchmark_and_drops_out_of_universe(lake):
+    from sf_quant.backtester import attach_beta_and_benchmark
+    import sf_quant.data as sfd
+
+    alphas = lake_alphas()
+    with pytest.warns(UserWarning, match="dropped 4 of 24 rows"):
+        out = attach_beta_and_benchmark(alphas)
+
+    universe = sfd.load_assets(
+        alphas["date"].min(), alphas["date"].max(), ["date", "barrid", "predicted_beta"], in_universe=True
+    )
+    assert out.select("date", "barrid").sort("date", "barrid").equals(
+        universe.select("date", "barrid").sort("date", "barrid")
+    )
+    sums = out.group_by("date").agg(pl.col("benchmark_weight").sum())["benchmark_weight"]
+    assert sums.to_list() == pytest.approx([1.0] * sums.len())
+    assert out["predicted_beta"].null_count() == 0
+
+
+def test_attach_keeps_columns_the_caller_supplied(lake):
+    from sf_quant.backtester import attach_beta_and_benchmark
+
+    alphas = lake_alphas().with_columns(predicted_beta=pl.lit(1.0), benchmark_weight=pl.lit(None, pl.Float64))
+    out = attach_beta_and_benchmark(alphas)
+    assert out.height == alphas.height  # no universe join when beta is supplied
+    assert (out["predicted_beta"] == 1.0).all()
+    assert (out["benchmark_weight"] == 0.0).all()  # supplied nulls become 0
+
+
+def test_backtest_needs_only_date_barrid_alpha(lake):
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        out = backtest(lake_alphas(), n_cpus=1)
+    assert out.columns == ["date", "barrid", "active_weight", "benchmark_weight", "active_risk"]
+    sums = out.group_by("date").agg(pl.col("active_weight").sum())["active_weight"]
+    assert np.allclose(sums.to_numpy(), 0.0, atol=1e-6)

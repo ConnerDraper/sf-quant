@@ -1,17 +1,66 @@
 import datetime as dt
 import os
+import warnings
 from collections.abc import Sequence
 
 import polars as pl
 import tqdm
 from joblib import Parallel, delayed
 
+from sf_quant.data.assets import load_assets
+from sf_quant.data.benchmark import load_benchmark
 from sf_quant.data.covariance_matrix import construct_factor_model_components
-from sf_quant.optimizer.constraints import DEFAULT_CONSTRAINTS, Constraint, ZeroBeta
+from sf_quant.optimizer.constraints import DEFAULT_CONSTRAINTS, Constraint
 from sf_quant.optimizer.optimizers import active_mve_optimizer
 from sf_quant.schema.active_portfolio_schema import ActivePortfolioSchema
 
-REQUIRED_COLUMNS = ("date", "barrid", "alpha", "benchmark_weight")
+REQUIRED_COLUMNS = ("date", "barrid", "alpha")
+
+
+def attach_beta_and_benchmark(data: pl.DataFrame) -> pl.DataFrame:
+    """
+    Join ``predicted_beta`` and ``benchmark_weight`` onto ``data`` where absent.
+
+    A column the caller already supplied is used as given. Otherwise:
+
+    - ``predicted_beta`` comes from ``load_assets(in_universe=True)``, joined
+      *inner*: a row with no in-universe beta that date is dropped. This is
+      also what restricts the panel to the Barra universe, whose risk model is
+      the one every solve uses.
+    - ``benchmark_weight`` comes from ``load_benchmark``, joined left, with
+      names outside the benchmark set to 0 (``LongOnly`` then floors them at
+      ``h >= 0``).
+
+    Both are observed on the row's own date. Run this after
+    :func:`~sf_quant.backtester.collapse` (``backtest`` does), so a lagged alpha
+    is paired with the rebalance date's beta and benchmark, which is what a
+    signal lag means.
+
+    Dropped rows are reported with a warning, never silently.
+    """
+    start, end = data["date"].min(), data["date"].max()
+    out = data
+
+    if "predicted_beta" not in out.columns:
+        betas = load_assets(
+            start=start, end=end, columns=["date", "barrid", "predicted_beta"], in_universe=True
+        ).drop_nulls("predicted_beta")
+        out = out.join(betas, on=["date", "barrid"], how="inner")
+        dropped = data.height - out.height
+        if dropped:
+            warnings.warn(
+                f"dropped {dropped:,} of {data.height:,} rows with no in-universe "
+                "predicted_beta on their date",
+                stacklevel=3,
+            )
+
+    if "benchmark_weight" not in out.columns:
+        benchmark = load_benchmark(start, end).select(
+            "date", "barrid", pl.col("weight").alias("benchmark_weight")
+        )
+        out = out.join(benchmark, on=["date", "barrid"], how="left")
+
+    return out.with_columns(pl.col("benchmark_weight").fill_null(0.0))
 
 
 def _construct_portfolio(
@@ -36,11 +85,7 @@ def _construct_portfolio(
         specific_risk=specific_risk,
         benchmark_weights=subset["benchmark_weight"].to_numpy(),
         target_active_risk=target_active_risk,
-        betas=(
-            subset["predicted_beta"].to_numpy()
-            if "predicted_beta" in subset.columns
-            else None
-        ),
+        betas=subset["predicted_beta"].to_numpy(),
         constraints=constraints,
     )
 
@@ -69,14 +114,17 @@ def backtest(
     Parameters
     ----------
     data : pl.DataFrame
-        Rows to optimize. Must contain ``date``, ``barrid``, ``alpha`` and
-        ``benchmark_weight``; ``predicted_beta`` is required whenever
-        ``ZeroBeta`` is among the constraints.
+        Rows to optimize. Must contain ``date``, ``barrid`` and ``alpha``.
+        ``predicted_beta`` and ``benchmark_weight`` are joined on from the data
+        lake when absent (see :func:`attach_beta_and_benchmark`), which also
+        drops rows outside the Barra universe; supply them to use your own.
     constraints : Sequence[Constraint], default DEFAULT_CONSTRAINTS
         Active-space constraints, defaulting to the fund mandate of
         ``ZeroInvestment``, ``ZeroBeta`` and ``LongOnly``.
     target_active_risk : float, default 0.05
-        Annualized tracking-error budget, in decimal.
+        Annualized tracking-error budget, in decimal. This, not a gamma, sizes
+        every portfolio; there is deliberately no gamma parameter. If you are
+        passing or tuning one, you are doing it wrong (Manual §3.2).
     n_cpus : int, optional
         Worker processes, capped at the number of distinct dates. ``None`` uses
         ``os.cpu_count()``. Pass ``1`` to run in-process, which is what you
@@ -116,15 +164,11 @@ def backtest(
     missing = [c for c in REQUIRED_COLUMNS if c not in data.columns]
     if missing:
         raise ValueError(f"data is missing required columns: {missing}")
-    if "predicted_beta" not in data.columns and any(
-        isinstance(c, ZeroBeta) for c in constraints
-    ):
-        raise ValueError(
-            "ZeroBeta is in constraints but data has no 'predicted_beta' column; "
-            "either add the column or drop ZeroBeta from constraints"
-        )
     if data.is_empty():
         raise ValueError("data is empty; nothing to optimize")
+    data = attach_beta_and_benchmark(data)
+    if data.is_empty():
+        raise ValueError("no rows left after joining the in-universe predicted_beta")
 
     # Each task gets only its own date's rows, so workers aren't sent the
     # whole panel once per date.
