@@ -15,3 +15,9 @@ SLURM
    BacktestConfig
    BacktestRunner
    SlurmConfig
+   submit_job
+   submit_sweep
+   submit_command
+   load_weights
+   expected_years
+   MissingYearsError

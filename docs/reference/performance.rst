@@ -15,6 +15,9 @@ Performance
    generate_active_returns_from_weights
    generate_returns_from_weights
    generate_multi_returns_from_weights
+   generate_cumulative_log_returns
+   generate_transfer_coefficients
+   infer_periods_per_year
    generate_leverage_from_weights
    generate_drawdown_from_returns
    generate_returns_summary_table

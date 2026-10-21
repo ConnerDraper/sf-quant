@@ -13,6 +13,7 @@ Optimizer
    :nosignatures:
 
    active_mve_optimizer
+   sigma_inverse
    ZeroInvestment
    ZeroBeta
    LongOnly

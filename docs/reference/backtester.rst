@@ -15,3 +15,5 @@ Backtester
    backtest
    collapse
    rebalance_dates
+   rebalance_phases
+   attach_beta_and_benchmark
