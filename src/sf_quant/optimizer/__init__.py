@@ -5,10 +5,11 @@ from .constraints import (
     ZeroBeta,
     ZeroInvestment,
 )
-from .optimizers import active_mve_optimizer
+from .optimizers import active_mve_optimizer, sigma_inverse
 
 __all__ = [
     "active_mve_optimizer",
+    "sigma_inverse",
     "Constraint",
     "DEFAULT_CONSTRAINTS",
     "LongOnly",

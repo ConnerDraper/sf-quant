@@ -6,6 +6,11 @@ constraints are not expressible here and are not needed: because ``sum(h) == 0``
 and ``betas @ h == 0`` are enforced by default, full investment
 (``sum(w) == sum(b) == 1``) and unit beta (``betas @ w == betas @ b == 1``)
 follow automatically.
+
+A constraint that is a linear equality ``row @ h == 0`` also exposes that row
+through ``equality_row``. When every constraint in a solve has one, the
+optimizer uses the closed form of Manual Ch. 3.3 instead of a numerical solver;
+anything without a row (``LongOnly``) needs the numerical path of Ch. 3.4.
 """
 
 from typing import Protocol
@@ -49,6 +54,12 @@ class Constraint(Protocol):
         """
         ...
 
+    def violation(
+        self, h: np.ndarray, *, benchmark_weights: np.ndarray, betas: np.ndarray | None = None
+    ) -> float:
+        """How far a solved ``h`` is from satisfying the constraint; 0 if it does."""
+        ...
+
 
 class ZeroInvestment(Constraint):
     """
@@ -74,6 +85,18 @@ class ZeroInvestment(Constraint):
     ) -> cp.Constraint:
         """Apply the zero-investment constraint."""
         return cp.sum(active_weights) == 0
+
+    def equality_row(
+        self, *, benchmark_weights: np.ndarray, betas: np.ndarray | None = None
+    ) -> np.ndarray:
+        """The row of ``C`` in ``C h = 0``: a vector of ones."""
+        return np.ones_like(benchmark_weights, dtype=float)
+
+    def violation(
+        self, h: np.ndarray, *, benchmark_weights: np.ndarray, betas: np.ndarray | None = None
+    ) -> float:
+        """How far a solved ``h`` is from satisfying the constraint (0 if it does)."""
+        return abs(float(np.sum(h)))
 
 
 class ZeroBeta(Constraint):
@@ -112,6 +135,20 @@ class ZeroBeta(Constraint):
             raise ValueError("ZeroBeta requires betas")
         return betas @ active_weights == 0
 
+    def equality_row(
+        self, *, benchmark_weights: np.ndarray, betas: np.ndarray | None = None
+    ) -> np.ndarray:
+        """The row of ``C`` in ``C h = 0``: the predicted betas."""
+        if betas is None:
+            raise ValueError("ZeroBeta requires betas")
+        return np.asarray(betas, dtype=float)
+
+    def violation(
+        self, h: np.ndarray, *, benchmark_weights: np.ndarray, betas: np.ndarray | None = None
+    ) -> float:
+        """How far a solved ``h`` is from satisfying the constraint (0 if it does)."""
+        return abs(float(self.equality_row(benchmark_weights=benchmark_weights, betas=betas) @ h))
+
 
 class LongOnly(Constraint):
     """
@@ -137,6 +174,12 @@ class LongOnly(Constraint):
     ) -> cp.Constraint:
         """Apply the benchmark-relative long-only bound."""
         return active_weights >= -benchmark_weights
+
+    def violation(
+        self, h: np.ndarray, *, benchmark_weights: np.ndarray, betas: np.ndarray | None = None
+    ) -> float:
+        """How far a solved ``h`` is from satisfying the constraint (0 if it does)."""
+        return max(0.0, -float(np.min(benchmark_weights + h)))
 
 
 #: The Silver Fund active mandate, applied unless a caller passes its own list.

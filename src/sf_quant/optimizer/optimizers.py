@@ -1,3 +1,20 @@
+"""The active-space optimizer: maximize alpha at a target active risk.
+
+There is deliberately no gamma (risk-aversion) parameter anywhere in this
+package. A portfolio is sized by ``target_active_risk``; the tracking-error
+target is what implicitly sets the multiplier on risk each date, never the
+other way round. As Manual §3.2 puts it, that multiplier "is the scalar
+multiplier on the tracking-error target, not a risk-aversion parameter." If you
+find yourself passing or tuning a gamma, you are doing it wrong.
+
+Two solvers sit behind ``active_mve_optimizer``, following Manual Ch. 3:
+
+- Linear equality constraints only (``ZeroInvestment``, ``ZeroBeta``): the
+  closed form of §3.2–3.3. No numerical solver.
+- Any inequality (``LongOnly``): a numerical solve, as in §3.4. That path uses
+  CVXPY, because an inequality that binds has no closed form.
+"""
+
 from collections.abc import Sequence
 
 import cvxpy as cp
@@ -5,6 +22,13 @@ import numpy as np
 import polars as pl
 
 from .constraints import DEFAULT_CONSTRAINTS, Constraint
+
+# Manual §3.3.6: after solving, confirm the restrictions that define the
+# problem. The closed form is exact to rounding; CLARABEL stops within its own
+# tolerance of feasible, so it is held to a looser bound.
+CLOSED_FORM_TOLERANCE = 1e-9
+NUMERICAL_TOLERANCE = 1e-6
+RISK_TOLERANCE = 1e-3  # relative, on active risk vs. its target
 
 
 def active_mve_optimizer(
@@ -36,6 +60,18 @@ def active_mve_optimizer(
     tracking-error constraint binds at the optimum and the solution sits near a
     vertex of the feasible set — expect most names to land exactly on the
     ``LongOnly`` bound ``h = -b``.
+
+    When every constraint is a linear equality (each has an ``equality_row``),
+    the solution is the closed form of Manual §3.2–3.3:
+
+    .. math::
+
+        d = V^{-1}\\left[I - C^T (C V^{-1} C^T)^{-1} C V^{-1}\\right] \\alpha,
+        \\qquad
+        h^* = \\frac{\\bar\\sigma_a}{\\sqrt{d^T V d}}\\, d
+
+    Otherwise (``LongOnly``) it is solved numerically with CVXPY, as in §3.4.
+    There is no gamma: see the module docstring.
 
     Parameters
     ----------
@@ -73,7 +109,8 @@ def active_mve_optimizer(
     ------
     ValueError
         If array lengths disagree, if ``alphas`` or ``benchmark_weights``
-        contain non-finite values, or if the solver does not converge.
+        contain non-finite values, if the solver does not converge, or if the
+        solution fails the Manual §3.3.6 checks.
 
     Examples
     --------
@@ -114,10 +151,86 @@ def active_mve_optimizer(
                 f"{name} has {len(bad)} non-finite values (barrids: {bad[:10]}); "
                 "fill nulls before optimizing"
             )
+
     if target_active_risk <= 0:
         raise ValueError(f"target_active_risk must be positive, got {target_active_risk}")
 
-    h = cp.Variable(n_assets)
+    alphas = np.asarray(alphas, dtype=float)
+    if all(hasattr(c, "equality_row") for c in constraints):
+        rows = [
+            c.equality_row(benchmark_weights=benchmark_weights, betas=betas)
+            for c in constraints
+        ]
+        h = _closed_form(alphas, factor_exposures, factor_covariance, specific_risk, rows, target_active_risk)
+        tolerance = CLOSED_FORM_TOLERANCE
+    else:
+        h = _numerical(
+            alphas, factor_exposures, factor_covariance, specific_risk,
+            benchmark_weights, betas, constraints, target_active_risk,
+        )
+        tolerance = NUMERICAL_TOLERANCE
+
+    active_risk = _active_risk(h, factor_exposures, factor_covariance, specific_risk)
+    _check(h, active_risk, constraints, benchmark_weights, betas, target_active_risk, tolerance)
+
+    return pl.DataFrame(
+        {
+            "barrid": ids,
+            "active_weight": h,
+            "active_risk": active_risk,
+        }
+    )
+
+
+def sigma_inverse(
+    v: np.ndarray, factor_exposures: np.ndarray, factor_covariance: np.ndarray, specific_risk: np.ndarray
+) -> np.ndarray:
+    """
+    :math:`V^{-1} v` for :math:`V = B F B^T + \\text{diag}(D)`, without forming V.
+
+    Uses the Woodbury identity in the form that never inverts F (the loader
+    fills missing covariances with 0, so F can be singular):
+
+    .. math::
+
+        V^{-1} v = D^{-1} v - D^{-1} B (I + F B^T D^{-1} B)^{-1} F B^T D^{-1} v
+
+    ``v`` may be a vector or a matrix of column vectors. This is the linear-solve
+    form Manual §3.3.4 recommends over explicit inverses at scale.
+    """
+    B, F, D = factor_exposures, factor_covariance, specific_risk
+    d_inv_v = v / D[:, None] if v.ndim == 2 else v / D
+    d_inv_b = B / D[:, None]
+    core = np.eye(F.shape[0]) + F @ (B.T @ d_inv_b)
+    return d_inv_v - d_inv_b @ np.linalg.solve(core, F @ (B.T @ d_inv_v))
+
+
+def _closed_form(alphas, factor_exposures, factor_covariance, specific_risk, rows, target_active_risk):
+    """Manual §3.2–3.3: the constrained direction, scaled to the tracking-error target."""
+    if np.any(specific_risk <= 0):
+        raise ValueError("specific_risk must be positive for the closed form")
+
+    g = sigma_inverse(alphas, factor_exposures, factor_covariance, specific_risk)  # unconstrained direction V⁻¹α
+    if rows:
+        C = np.vstack(rows)
+        W = sigma_inverse(C.T, factor_exposures, factor_covariance, specific_risk)  # V⁻¹Cᵀ
+        eta = np.linalg.solve(C @ W, C @ g)  # (CV⁻¹Cᵀ)⁻¹ C g
+        d = g - W @ eta
+    else:
+        d = g
+
+    d_variance = _active_risk(d, factor_exposures, factor_covariance, specific_risk) ** 2  # dᵀVd
+    if not d_variance > 0:
+        raise ValueError("alphas lie entirely in the span of the constraints; no active bet is possible")
+    return d * (target_active_risk / np.sqrt(d_variance))
+
+
+def _numerical(
+    alphas, factor_exposures, factor_covariance, specific_risk,
+    benchmark_weights, betas, constraints, target_active_risk,
+):
+    """Manual §3.4: inequality constraints can bind, so solve numerically."""
+    h = cp.Variable(len(alphas))
 
     factor_loadings = factor_exposures.T @ h
     # Factor risk as an explicit sum of squares, not cp.quad_form: CVXPY's
@@ -145,18 +258,24 @@ def active_mve_optimizer(
     if problem.status not in ("optimal", "optimal_inaccurate"):
         raise ValueError(f"Optimization failed. Status: {problem.status}")
 
-    active_weights = h.value
+    return h.value
 
-    factor_loadings = factor_exposures.T @ active_weights
-    realized_variance = (
-        factor_loadings @ factor_covariance @ factor_loadings
-        + np.sum(specific_risk * np.square(active_weights))
-    )
 
-    return pl.DataFrame(
-        {
-            "barrid": ids,
-            "active_weight": active_weights,
-            "active_risk": float(np.sqrt(max(0.0, realized_variance))),
-        }
-    )
+def _active_risk(h, factor_exposures, factor_covariance, specific_risk) -> float:
+    """√(hᵀVh), Manual eq. 2.4.11."""
+    loadings = factor_exposures.T @ h
+    variance = loadings @ factor_covariance @ loadings + np.sum(specific_risk * np.square(h))
+    return float(np.sqrt(max(0.0, variance)))
+
+
+def _check(h, active_risk, constraints, benchmark_weights, betas, target_active_risk, tolerance) -> None:
+    """Manual §3.3.6 / §3.4.5: confirm every restriction that defines the problem."""
+    failures = []
+    for c in constraints:
+        gap = c.violation(h, benchmark_weights=benchmark_weights, betas=betas)
+        if gap > tolerance:
+            failures.append(f"{type(c).__name__} violated by {gap:.3g}")
+    if abs(active_risk - target_active_risk) > RISK_TOLERANCE * target_active_risk:
+        failures.append(f"active risk {active_risk:.6g} vs. target {target_active_risk:.6g}")
+    if failures:
+        raise ValueError("solution fails the Manual §3.3.6 checks: " + "; ".join(failures))
