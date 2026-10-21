@@ -123,26 +123,27 @@ def collapse(
         pl.col("date").is_in(rebalance_dates(dates, rebalance_period).implode())
     )
 
-    # Ordinal of the date each rebalance date sources its alpha from. Rebalance
-    # dates inside the first `lag` trading days of the calendar have no source
-    # and drop out.
-    sources = grid.select(
-        (pl.col("t") - lag).alias("t"), pl.col("date").alias("rebalance_date")
-    ).filter(pl.col("t") >= 0)
-
+    grid_t = grid["t"].implode()
     keyed = data.join(calendar.lazy(), on="date", how="inner")
 
+    # The alpha observed on ordinal t is used on rebalance ordinal t + lag, if
+    # that is a rebalance date. Rebalance dates inside the first `lag` trading
+    # days of the calendar have no source and drop out. Mapping by arithmetic
+    # rather than through a join on a date table matters: given that extra
+    # join, polars' optimizer reordered the plan into a join on barrid alone,
+    # pairing every date of a name with every other, which needed ~15 GB per
+    # million rows.
     alphas = (
-        keyed.select("t", "barrid", "alpha")
+        keyed.select((pl.col("t") + lag).alias("t"), "barrid", "alpha")
         .drop_nulls("alpha")
-        .join(sources.lazy(), on="t", how="inner")
-        .select(pl.col("rebalance_date").alias("date"), "barrid", "alpha")
+        .filter(pl.col("t").is_in(grid_t))
     )
 
     collapsed = (
-        keyed.filter(pl.col("t").is_in(grid["t"].implode()))
-        .drop("t", "alpha")
-        .join(alphas, on=["date", "barrid"], how="inner")
+        keyed.filter(pl.col("t").is_in(grid_t))
+        .drop("alpha")
+        .join(alphas, on=["t", "barrid"], how="inner")
+        .drop("t")
     )
 
     if "benchmark_weight" in data.collect_schema().names():

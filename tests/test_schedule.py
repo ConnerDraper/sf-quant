@@ -164,3 +164,9 @@ def test_phases_are_the_grids_a_direct_run_would_solve(period):
     # Together the phases use every day exactly once.
     days = sorted(d for frame in phases for d in frame["date"].unique().to_list())
     assert days == DATES
+
+
+def test_collapse_joins_on_both_keys_never_barrid_alone():
+    """A join on barrid alone pairs every date of a name with every other."""
+    plan = collapse(panel(), dates=CALENDAR, rebalance_period=2, lag=1).explain()
+    assert 'ON: [col("barrid")]' not in plan
