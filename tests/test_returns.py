@@ -160,3 +160,19 @@ def test_multi_returns_exclude_the_formation_day(stub_assets, monkeypatch):
     assert by_portfolio["total"] == pytest.approx(total)
     assert by_portfolio["benchmark"] == pytest.approx(bench)
     assert by_portfolio["active"] == pytest.approx(total - bench)
+
+
+def test_cumulative_path_books_each_period_at_its_end(stub_assets):
+    """Formed on days 0, 2, 4: period returns land on days 2 and 4, flat between."""
+    from sf_quant.performance import generate_cumulative_log_returns
+    import math
+
+    formation = [DATES[0], DATES[2], DATES[4]]
+    weights = weights_on(formation, [(0.3, -0.3)] * 3)
+    path = generate_cumulative_log_returns(weights, dates=pl.Series(DATES[:5]))
+
+    first = 0.3 * compound("A", [1, 2]) - 0.3 * compound("B", [1, 2])
+    second = 0.3 * compound("A", [3, 4]) - 0.3 * compound("B", [3, 4])
+    expected = [0.0, 0.0, math.log1p(first), math.log1p(first), math.log1p(first) + math.log1p(second)]
+    assert path["date"].to_list() == DATES[:5]
+    assert path["cumulative_log_return"].to_list() == pytest.approx(expected)

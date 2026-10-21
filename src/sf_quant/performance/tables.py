@@ -3,13 +3,14 @@ import polars.selectors as cs
 from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
 from sf_quant.schema.leverage_schema import LeverageSchema
 from sf_quant.schema.drawdown_schema import DrawdownSchema
+from .annualize import infer_periods_per_year
 
 
 def generate_multi_returns_summary_table(
     returns: MultiPortfolioRetSchema,
     wide: bool = True,
     *,
-    periods_per_year: float = 252,
+    periods_per_year: float | None = None,
     risk_free: float = 0.0,
 ) -> pl.DataFrame:
     """
@@ -34,8 +35,10 @@ def generate_multi_returns_summary_table(
         format with one row per portfolio. If ``False``, return the summary
         transposed with statistics as rows.
     periods_per_year : float, optional
-        Return periods per year, used to annualize. Defaults to 252, for daily
-        returns; pass ``252 / N`` for returns held N trading days.
+        Return periods per year, used to annualize. By default it is inferred
+        from the spacing of the formation dates on the trading calendar
+        (:func:`infer_periods_per_year`): 252 for daily rebalancing, 252 / N
+        for portfolios held N trading days. Pass a number to override.
     risk_free : float, optional
         Annualized risk-free rate subtracted from every portfolio's mean
         return except ``"active"`` before computing the Sharpe ratio. Defaults
@@ -77,6 +80,9 @@ def generate_multi_returns_summary_table(
     >>> returns = sfp.generate_multi_returns_from_weights(weights)   # doctest: +SKIP
     >>> sfp.generate_multi_returns_summary_table(returns, risk_free=0.02)   # doctest: +SKIP
     """
+    if periods_per_year is None:
+        periods_per_year = infer_periods_per_year(returns["date"])
+
     summary_wide = (
         returns.group_by("portfolio")
         .agg(
@@ -129,7 +135,7 @@ def generate_multi_returns_summary_table(
 def generate_returns_summary_table(
     returns: PortfolioRetSchema,
     *,
-    periods_per_year: float = 252,
+    periods_per_year: float | None = None,
     risk_free: float = 0.0,
 ) -> pl.DataFrame:
     """
@@ -147,8 +153,10 @@ def generate_returns_summary_table(
         - ``date`` (date): The observation date.
         - ``return`` (float): Portfolio return per period.
     periods_per_year : float, optional
-        Return periods per year, used to annualize. Defaults to 252, for daily
-        returns; pass ``252 / N`` for returns held N trading days.
+        Return periods per year, used to annualize. By default it is inferred
+        from the spacing of the formation dates on the trading calendar
+        (:func:`infer_periods_per_year`): 252 for daily rebalancing, 252 / N
+        for portfolios held N trading days. Pass a number to override.
     risk_free : float, optional
         Annualized risk-free rate subtracted from the mean return before
         computing the Sharpe ratio. Defaults to 0. Leave it at 0 for active

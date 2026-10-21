@@ -1,5 +1,5 @@
 import polars as pl
-from sf_quant.data.assets import load_assets
+from sf_quant.data.assets import load_assets, load_trading_days
 from sf_quant.data.benchmark import load_benchmark
 from sf_quant.schema.active_portfolio_schema import ActivePortfolioSchema
 from sf_quant.schema.portfolio_schema import PortfolioSchema
@@ -243,3 +243,55 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
     """
     result = _earn(weights, _period_returns(weights), "weight")
     return PortfolioRetSchema.validate(result)
+
+def generate_cumulative_log_returns(
+    weights: ActivePortfolioSchema, dates: pl.Series | None = None
+) -> pl.DataFrame:
+    """
+    Cumulative log active return of a weight history, marked on a daily axis.
+
+    A holding-period return is keyed by its formation date :math:`t_k` but
+    earned over :math:`(t_k, t_{k+1}]`, so it is booked at :math:`t_{k+1}`;
+    between rebalances the path holds its last mark. Putting every run on the
+    same daily axis is what lets runs with different rebalance periods or
+    starting days be drawn together or averaged.
+
+    Parameters
+    ----------
+    weights : ActivePortfolioSchema
+        Active weights on any rebalance grid, with ``date``, ``barrid`` and
+        ``active_weight``.
+    dates : pl.Series, optional
+        The daily axis. Defaults to the trading calendar from the first to the
+        last formation date.
+
+    Returns
+    -------
+    pl.DataFrame
+        ``date`` and ``cumulative_log_return`` (0 at the first date), one row
+        per date of the axis.
+
+    Examples
+    --------
+    >>> import sf_quant.performance as sfp
+    >>> path = sfp.generate_cumulative_log_returns(weights)   # doctest: +SKIP
+    """
+    returns = generate_active_returns_from_weights(weights)
+    formation = weights["date"].unique().sort()
+    if dates is None:
+        dates = load_trading_days(formation.min(), formation.max())
+
+    ends = pl.DataFrame({"date": formation, "end": formation.shift(-1)})
+    marks = (
+        returns.sort("date")
+        .join(ends, on="date")
+        .select(
+            pl.col("end").alias("date"),
+            pl.col("return").log1p().cum_sum().alias("cumulative_log_return"),
+        )
+    )
+    return (
+        pl.DataFrame({"date": dates.unique().sort()})
+        .join(marks, on="date", how="left")
+        .with_columns(pl.col("cumulative_log_return").forward_fill().fill_null(0.0))
+    )

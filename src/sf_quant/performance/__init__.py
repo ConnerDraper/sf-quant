@@ -9,7 +9,10 @@ from .returns import (
     generate_active_returns_from_weights,
     generate_returns_from_weights,
     generate_multi_returns_from_weights,
+    generate_cumulative_log_returns,
 )
+from .annualize import infer_periods_per_year
+from .transfer import generate_transfer_coefficients
 from .leverage import generate_leverage_from_weights
 from .drawdown import generate_drawdown_from_returns
 from .tables import (
@@ -38,6 +41,9 @@ __all__ = [
     "generate_active_returns_from_weights",
     "generate_returns_from_weights",
     "generate_multi_returns_from_weights",
+    "generate_cumulative_log_returns",
+    "infer_periods_per_year",
+    "generate_transfer_coefficients",
     # Leverage
     "generate_leverage_from_weights",
     # Drawdown
