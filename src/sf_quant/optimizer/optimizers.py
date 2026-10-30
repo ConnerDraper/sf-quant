@@ -166,6 +166,7 @@ def dynamic_mve_optimizer(
 
     if problem.status not in ["optimal", "optimal_inaccurate"]:
         raise ValueError(f"Optimization failed. Status: {problem.status}")
+    _check_inaccurate(problem, scale={te_constraint.id: target_active_risk**2})
 
     optimal_h = h.value
 
@@ -223,5 +224,30 @@ def _quadratic_program(
 
     if problem.status not in ["optimal", "optimal_inaccurate"]:
         raise ValueError(f"Optimization failed. Status: {problem.status}")
+    _check_inaccurate(problem)
 
     return weights.value
+
+
+def _check_inaccurate(
+    problem: cp.Problem, tolerance: float = 1e-6, scale: dict[int, float] | None = None
+) -> None:
+    """
+    Reject an ``optimal_inaccurate`` solution that breaks its constraints.
+
+    The solver stopped short of its own accuracy targets, which can mean a
+    solution good to 1e-9 or one that isn't. Each constraint's violation,
+    divided by ``scale[constraint.id]`` where given (e.g. the tracking-error
+    constraint by the target variance), must be within ``tolerance``.
+    """
+    if problem.status != "optimal_inaccurate":
+        return
+    scale = scale or {}
+    worst = max(
+        float(np.max(c.violation())) / scale.get(c.id, 1.0) for c in problem.constraints
+    )
+    if worst > tolerance:
+        raise ValueError(
+            f"Optimization inaccurate: a constraint is violated by {worst:.1e} "
+            f"(tolerance {tolerance:.0e})"
+        )
