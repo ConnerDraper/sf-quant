@@ -105,3 +105,35 @@ def test_held_names_earn_returns_after_leaving_the_universe(stub_assets):
     assert out["return"].to_list() == pytest.approx(
         [compound("B", [1, 2, 3]), compound("B", [4, 5, 6])]
     )
+
+
+def test_benchmark_names_the_portfolio_does_not_hold_still_count(stub_assets, monkeypatch):
+    """Weights list only A; the benchmark is half A, half B."""
+    benchmark = pl.DataFrame(
+        {
+            "date": [d for d in DATES for _ in BARRIDS],
+            "barrid": BARRIDS * len(DATES),
+            "weight": [0.5, 0.5] * len(DATES),
+        }
+    )
+    monkeypatch.setattr(returns_module, "load_benchmark", lambda **kwargs: benchmark.clone())
+    weights = pl.DataFrame({"date": [DATES[0], DATES[3]], "barrid": ["A", "A"], "weight": [1.0, 1.0]})
+
+    out = generate_multi_returns_from_weights(weights)
+    by_portfolio = dict(zip(out["portfolio"], out["return"]))
+    total = compound("A", [1, 2, 3])
+    bench = 0.5 * compound("A", [1, 2, 3]) + 0.5 * compound("B", [1, 2, 3])
+    assert by_portfolio["benchmark"] == pytest.approx(bench)
+    assert by_portfolio["active"] == pytest.approx(total - bench)
+
+
+def test_held_names_outside_the_benchmark_count_in_active(stub_assets, monkeypatch):
+    """The benchmark is all A; the portfolio is half A, half B."""
+    benchmark = pl.DataFrame({"date": DATES, "barrid": ["A"] * len(DATES), "weight": [1.0] * len(DATES)})
+    monkeypatch.setattr(returns_module, "load_benchmark", lambda **kwargs: benchmark.clone())
+
+    out = generate_multi_returns_from_weights(total_weights_on([DATES[0], DATES[3]], [[0.5, 0.5]] * 2))
+    by_portfolio = dict(zip(out["portfolio"], out["return"]))
+    total = 0.5 * compound("A", [1, 2, 3]) + 0.5 * compound("B", [1, 2, 3])
+    assert by_portfolio["total"] == pytest.approx(total)
+    assert by_portfolio["active"] == pytest.approx(total - compound("A", [1, 2, 3]))
