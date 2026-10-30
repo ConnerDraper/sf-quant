@@ -128,7 +128,7 @@ def load_assets_by_date(
     """
     if in_universe:
         return (
-            assets_table.scan()
+            assets_table.scan(date_.year)
             .filter(
                 pl.col("date").eq(date_),
                 pl.col('in_universe')

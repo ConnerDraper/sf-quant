@@ -114,7 +114,7 @@ def load_alphas_by_date(
     """
     if names is not None:
         return (
-            alphas_table.scan()
+            alphas_table.scan(date_.year)
             .filter(
                 pl.col("date").eq(date_),
                 pl.col("signal_name").is_in(names),
