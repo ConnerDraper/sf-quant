@@ -114,7 +114,7 @@ def load_signals_by_date(
     """
     if names is not None:
         return (
-            signals_table.scan()
+            signals_table.scan(date_.year)
             .filter(
                 pl.col("date").eq(date_),
                 pl.col("signal_name").is_in(names),

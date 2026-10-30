@@ -88,34 +88,17 @@ def construct_covariance_matrix(date_: dt.date, barrids: list[str]) -> pl.DataFr
     │ USA0771 ┆ 697.641425  ┆ 11158.366868 │
     └─────────┴─────────────┴──────────────┘
     """
-    # Load
-    exposures_matrix = (
-        _construct_factor_exposure_matrix(date_, barrids).drop("barrid").to_numpy()
+    exposures, factor_covariance, specific_variance = construct_factor_model_components(
+        date_, barrids
     )
-    covariance_matrix = (
-        _construct_factor_covariance_matrix(date_).drop("factor_1").to_numpy()
-    )
-    idio_risk_matrix = (
-        _construct_specific_risk_matrix(date_, barrids).drop("barrid").to_numpy()
-    )
+    covariance_matrix = exposures @ factor_covariance @ exposures.T + np.diag(specific_variance)
 
-    # Compute covariance matrix
-    covariance_matrix = (
-        exposures_matrix @ covariance_matrix @ exposures_matrix.T + idio_risk_matrix
-    )
-
-    # Put in decimal space
-    covariance_matrix /= 100**2
-
-    # Package
-    covariance_matrix = pl.DataFrame(
+    return pl.DataFrame(
         {
             "barrid": barrids,
             **{id: covariance_matrix[:, i] for i, id in enumerate(barrids)},
         }
     )
-
-    return covariance_matrix
 
 
 def _construct_factor_exposure_matrix(
@@ -161,30 +144,3 @@ def _construct_factor_covariance_matrix(date_: dt.date) -> pl.DataFrame:
 
     return cov_mat
 
-
-def _construct_specific_risk_matrix(date_: dt.date, barrids: list[str]) -> pl.DataFrame:
-    # Barrids
-    barrids_df = pl.DataFrame({"barrid": barrids})
-
-    # Load
-    sr_df = load_assets_by_date(
-        date_, in_universe=False, columns=["date", "barrid", "specific_risk"]
-    )
-
-    # Filter
-    sr_df = barrids_df.join(sr_df, on=["barrid"], how="left").fill_null(
-        0
-    )  # ask Brandon about this.
-
-    # Convert vector to diagonal matrix
-    diagonal = np.power(np.diag(sr_df["specific_risk"]), 2)
-
-    # Package
-    risk_matrix = pl.DataFrame(
-        {
-            "barrid": barrids,
-            **{id: diagonal[:, i] for i, id in enumerate(barrids)},
-        }
-    )
-
-    return risk_matrix
