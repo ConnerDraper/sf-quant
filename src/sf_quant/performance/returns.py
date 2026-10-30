@@ -1,5 +1,5 @@
 import polars as pl
-from sf_quant.data._tables import assets_table
+from sf_quant.data.assets import load_assets
 from sf_quant.data.benchmark import load_benchmark
 from sf_quant.schema.portfolio_schema import PortfolioSchema
 from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
@@ -117,11 +117,8 @@ def _period_returns(weights: pl.DataFrame) -> pl.DataFrame:
     Keyed by ``form_date``, the formation date that opened the period. A period
     runs from the day after its formation date through the next formation date,
     so a portfolio never earns the return of the day it was built: that return
-    is already known when the weights are formed.
-
-    Every held name earns its returns through the period whether or not it is
-    still in the universe: leaving the Russell indexes does not sell a
-    position. A name with no observations in a period contributes nothing.
+    is already known when the weights are formed. A name with no observations
+    in a period contributes nothing.
     """
     formation_dates = weights["date"].unique().sort()
     if formation_dates.len() < 2:
@@ -130,16 +127,13 @@ def _period_returns(weights: pl.DataFrame) -> pl.DataFrame:
             f"{formation_dates.len()}"
         )
 
-    # Only the held names, filtered as the files are read: the whole store is
-    # several times the in-universe rows.
     daily = (
-        assets_table.scan()
-        .filter(
-            pl.col("date").is_between(formation_dates.min(), formation_dates.max()),
-            pl.col("barrid").is_in(weights["barrid"].unique().implode()),
+        load_assets(
+            start=formation_dates.min(),
+            end=formation_dates.max(),
+            columns=["date", "barrid", "return"],
+            in_universe=True,
         )
-        .select("date", "barrid", "return")
-        .collect()
         .with_columns(pl.col("return").truediv(100))
         .drop_nulls("return")
     )
