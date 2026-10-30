@@ -67,6 +67,16 @@ def stub_risk_model(monkeypatch, date, exposure_barrids=BARRIDS, specific_barrid
     return B, F
 
 
+def test_covariance_matrix_is_the_factor_model(monkeypatch):
+    date = dt.date(2024, 3, 5)
+    B, F = stub_risk_model(monkeypatch, date)
+
+    out = cov_module.construct_covariance_matrix(date, BARRIDS)
+    expected = (B @ F @ B.T + np.diag(SPECIFIC_RISK**2)) / 100**2
+    assert out.columns == ["barrid", *BARRIDS]
+    np.testing.assert_allclose(out.drop("barrid").to_numpy(), expected, rtol=1e-12)
+
+
 def test_components_follow_the_order_barrids_are_given_in(monkeypatch):
     date = dt.date(2024, 3, 5)
     B, F = stub_risk_model(monkeypatch, date)
