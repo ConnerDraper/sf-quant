@@ -175,7 +175,7 @@ def dynamic_mve_optimizer(
     realized_active_risk = float(np.sqrt(max(0.0, act_fac_var + act_spec_var)))
 
     if te_constraint.dual_value is not None:
-        calibrated_gamma = float(2.0 * te_constraint.dual_value)
+        calibrated_gamma = 2.0 * te_constraint.dual_value.item()
     else:
         calibrated_gamma = 0.0
 
