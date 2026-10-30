@@ -64,3 +64,16 @@ def test_covariance_matrix_is_the_factor_model(monkeypatch):
     expected = (B @ F @ B.T + np.diag(specific_risk**2)) / 100**2
     assert out.columns == ["barrid", *barrids]
     np.testing.assert_allclose(out.drop("barrid").to_numpy(), expected, rtol=1e-12)
+
+
+def test_column_listings_restore_the_callers_row_setting(monkeypatch):
+    import sf_quant.data.fama_french as ff_module
+
+    schema = {"date": pl.Date, "barrid": pl.String}
+    monkeypatch.setattr(Table, "scan", lambda self, year=None: pl.LazyFrame(schema=schema))
+    monkeypatch.setattr(ff_module, "fama_french", lambda: pl.LazyFrame(schema=schema))
+
+    with pl.Config(tbl_rows=25):
+        for listing in (sfd.get_assets_columns, sfd.get_fama_french_columns):
+            assert "barrid" in listing()
+            assert pl.Config.state(if_set=True)["POLARS_FMT_MAX_ROWS"] == "25"
