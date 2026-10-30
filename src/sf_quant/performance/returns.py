@@ -1,5 +1,5 @@
 import polars as pl
-from sf_quant.data.assets import load_assets
+from sf_quant.data._tables import assets_table
 from sf_quant.data.benchmark import load_benchmark
 from sf_quant.schema.portfolio_schema import PortfolioSchema
 from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
@@ -39,7 +39,8 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     -----
     - Asset returns are sourced via ``load_assets``.
     - Benchmark weights are sourced via ``load_benchmark``, on each formation
-      date.
+      date. Every benchmark name counts, held or not; a name missing from
+      ``weights`` or from the benchmark has weight 0 there.
     - Each row is the return earned after its formation date, never on it:
       a portfolio formed at :math:`t_k` earns each asset's return compounded
       over :math:`(t_k, t_{k+1}]`. A K-date grid gives K-1 rows per portfolio.
@@ -52,10 +53,18 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     start = weights["date"].min()
     end = weights["date"].max()
 
-    benchmark = load_benchmark(start=start, end=end)
+    benchmark = load_benchmark(start=start, end=end).filter(
+        pl.col("date").is_in(weights["date"].unique().implode())
+    )
 
+    # Full join: a benchmark name the portfolio doesn't hold still counts in the
+    # benchmark (and at minus its weight in active), and a held name outside the
+    # benchmark counts at its full weight in active.
     stacked = (
-        weights.join(benchmark, on=["date", "barrid"], how="left", suffix="_bmk")
+        weights.join(
+            benchmark, on=["date", "barrid"], how="full", coalesce=True, suffix="_bmk"
+        )
+        .with_columns(pl.col("weight", "weight_bmk").fill_null(0.0))
         .with_columns(pl.col("weight").sub("weight_bmk").alias("weight_act"))
         .rename({"weight": "total", "weight_bmk": "benchmark", "weight_act": "active"})
         .unpivot(
@@ -65,7 +74,7 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
         )
     )
 
-    result = _earn(stacked, _period_returns(weights), "weight", by=("portfolio",))
+    result = _earn(stacked, _period_returns(stacked), "weight", by=("portfolio",))
     return MultiPortfolioRetSchema.validate(result)
 
 
@@ -117,8 +126,11 @@ def _period_returns(weights: pl.DataFrame) -> pl.DataFrame:
     Keyed by ``form_date``, the formation date that opened the period. A period
     runs from the day after its formation date through the next formation date,
     so a portfolio never earns the return of the day it was built: that return
-    is already known when the weights are formed. A name with no observations
-    in a period contributes nothing.
+    is already known when the weights are formed.
+
+    Every held name earns its returns through the period whether or not it is
+    still in the universe: leaving the Russell indexes does not sell a
+    position. A name with no observations in a period contributes nothing.
     """
     formation_dates = weights["date"].unique().sort()
     if formation_dates.len() < 2:
@@ -127,13 +139,16 @@ def _period_returns(weights: pl.DataFrame) -> pl.DataFrame:
             f"{formation_dates.len()}"
         )
 
+    # Only the held names, filtered as the files are read: the whole store is
+    # several times the in-universe rows.
     daily = (
-        load_assets(
-            start=formation_dates.min(),
-            end=formation_dates.max(),
-            columns=["date", "barrid", "return"],
-            in_universe=True,
+        assets_table.scan()
+        .filter(
+            pl.col("date").is_between(formation_dates.min(), formation_dates.max()),
+            pl.col("barrid").is_in(weights["barrid"].unique().implode()),
         )
+        .select("date", "barrid", "return")
+        .collect()
         .with_columns(pl.col("return").truediv(100))
         .drop_nulls("return")
     )
