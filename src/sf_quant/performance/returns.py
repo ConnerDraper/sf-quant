@@ -39,8 +39,7 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     -----
     - Asset returns are sourced via ``load_assets``.
     - Benchmark weights are sourced via ``load_benchmark``, on each formation
-      date. Every benchmark name counts, held or not; a name missing from
-      ``weights`` or from the benchmark has weight 0 there.
+      date.
     - Each row is the return earned after its formation date, never on it:
       a portfolio formed at :math:`t_k` earns each asset's return compounded
       over :math:`(t_k, t_{k+1}]`. A K-date grid gives K-1 rows per portfolio.
@@ -53,18 +52,10 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     start = weights["date"].min()
     end = weights["date"].max()
 
-    benchmark = load_benchmark(start=start, end=end).filter(
-        pl.col("date").is_in(weights["date"].unique().implode())
-    )
+    benchmark = load_benchmark(start=start, end=end)
 
-    # Full join: a benchmark name the portfolio doesn't hold still counts in the
-    # benchmark (and at minus its weight in active), and a held name outside the
-    # benchmark counts at its full weight in active.
     stacked = (
-        weights.join(
-            benchmark, on=["date", "barrid"], how="full", coalesce=True, suffix="_bmk"
-        )
-        .with_columns(pl.col("weight", "weight_bmk").fill_null(0.0))
+        weights.join(benchmark, on=["date", "barrid"], how="left", suffix="_bmk")
         .with_columns(pl.col("weight").sub("weight_bmk").alias("weight_act"))
         .rename({"weight": "total", "weight_bmk": "benchmark", "weight_act": "active"})
         .unpivot(
@@ -74,7 +65,7 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
         )
     )
 
-    result = _earn(stacked, _period_returns(stacked), "weight", by=("portfolio",))
+    result = _earn(stacked, _period_returns(weights), "weight", by=("portfolio",))
     return MultiPortfolioRetSchema.validate(result)
 
 
