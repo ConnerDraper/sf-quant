@@ -15,7 +15,6 @@ dependencies = [
     "seaborn>=0.13.2",
     "tqdm>=4.67.1",
     "dataframely>=1.14.0",
-    "polars-ols>=0.3.5",
     "statsmodels>=0.14.0",
 ]
 
