@@ -16,6 +16,8 @@ from .covariances import load_covariances_by_date, get_covariances_columns
 from .covariance_matrix import construct_covariance_matrix, construct_factor_model_components
 from .benchmark import load_benchmark, load_benchmark_returns
 from .spreads import load_half_spreads
+from .crsp_link import CrspTablesMissingError, load_barrid_permno_link
+from .delistings import delisting_type_counts, load_delistings
 from .factors import load_factors, get_factors_columns, get_factor_names
 from .fama_french import load_fama_french, get_fama_french_columns
 from .signals import load_signals, load_signals_by_date, get_signal_names
@@ -47,6 +49,10 @@ __all__ = [
     "load_benchmark",
     "load_benchmark_returns",
     "load_half_spreads",
+    "CrspTablesMissingError",
+    "load_barrid_permno_link",
+    "load_delistings",
+    "delisting_type_counts",
     "load_factors",
     "get_factors_columns",
     "get_factor_names",

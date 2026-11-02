@@ -44,6 +44,13 @@ class FamaFrenchTable(Table):
             return f"{self._base_path}/{self._name}{year}.parquet"
 
 
+class SingleFileTable(Table):
+    """A table stored as one file, ``{name}/{name}.parquet``, not one per year."""
+
+    def _file_path(self, year: int | None = None) -> str:
+        return f"{self._base_path}/{self._name}.parquet"
+
+
 assets_table = Table("assets")
 crsp_daily_table = Table("crsp_daily")
 crsp_v2_daily_table = Table("crsp_v2_daily")
@@ -59,3 +66,6 @@ scores_table = Table("scores")
 alphas_table = Table("alphas")
 composite_alphas_table = Table("composite_alphas")
 optimal_weights_table = Table("optimal_weights")
+barra_ids_table = SingleFileTable("barra_ids")
+crsp_delisting_table = SingleFileTable("crsp_delisting")
+crsp_security_info_table = SingleFileTable("crsp_security_info")
