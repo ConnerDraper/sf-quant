@@ -5,6 +5,7 @@ import datetime as dt
 import polars as pl
 import pytest
 
+import sf_quant.data.spreads as spreads_module
 import sf_quant.performance.returns as returns_module
 from sf_quant.performance import (
     generate_multi_returns_from_weights,
@@ -13,13 +14,17 @@ from sf_quant.performance import (
 
 DATES = [dt.date(2024, 1, d) for d in (2, 3, 4)]
 # Daily returns in percent, as the assets table stores them. B is out of the
-# universe on DATES[1].
+# universe on DATES[1]. Spreads are 0, so net returns equal gross here; costs
+# are tested in test_costs.py.
 ASSETS = pl.DataFrame(
     {
         "date": DATES * 2,
         "barrid": ["A"] * 3 + ["B"] * 3,
         "return": [1.0, 2.0, 3.0, -1.0, -2.0, -3.0],
         "in_universe": [True] * 3 + [True, False, True],
+        "price": [10.0] * 6,
+        "average_daily_bid_ask_spread_30": [0.0] * 6,
+        "bid_ask_spread": [0.0] * 6,
     }
 )
 
@@ -32,6 +37,7 @@ class StubTable:
 @pytest.fixture(autouse=True)
 def stub_assets(monkeypatch):
     monkeypatch.setattr(returns_module, "assets_table", StubTable())
+    monkeypatch.setattr(spreads_module, "assets_table", StubTable())
 
 
 def stub_benchmark(monkeypatch, barrids, weights):

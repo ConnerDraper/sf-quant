@@ -5,7 +5,9 @@ from sf_quant.schema.portfolio_schema import PortfolioSchema
 from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
 
 
-def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfolioRetSchema:
+def generate_multi_returns_from_weights(
+    weights: PortfolioSchema, costs: bool = True
+) -> MultiPortfolioRetSchema:
     """
     Generate portfolio, benchmark, and active returns from given portfolio weights.
 
@@ -23,6 +25,13 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
         - ``date`` (date): The date for each weight.
         - ``barrid`` (str): The unique asset identifier.
         - ``weight`` (float): The portfolio weight assigned to the asset.
+    costs : bool, default True
+        Subtract half-spread trading costs
+        (:func:`sf_quant.performance.generate_trading_costs`) from the return
+        of the period each trade opens. ``False`` gives gross returns. **Trades
+        before 2010-11-22 cost 0**: Barra's bid-ask spreads start then, so net
+        returns before that date are gross returns, and a
+        ``MissingSpreadWarning`` says so.
 
     Returns
     -------
@@ -45,6 +54,9 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     - Returns are computed as the weighted sum of returns by portfolio.
     - Weights are matched with returns on the same date, so build them from
       signals lagged one day.
+    - Trading costs come off the total and active returns; the benchmark
+      trades for free. The first date is the starting portfolio and pays
+      nothing.
 
     Examples
     --------
@@ -58,7 +70,7 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
     ...         'weight': [0.5, 0.5, 0.3, 0.7]
     ...     }
     ... )
-    >>> returns = sfp.generate_multi_returns_from_weights(weights)
+    >>> returns = sfp.generate_multi_returns_from_weights(weights, costs=False)
     >>> returns
     shape: (6, 3)
     ┌────────────┬───────────┬────────────┐
@@ -110,10 +122,14 @@ def generate_multi_returns_from_weights(weights: PortfolioSchema) -> MultiPortfo
         .agg(agg_exprs)
         .sort("date", "portfolio")
     )
+    if costs:
+        result = _net(result, weights, portfolios=["total", "active"])
     return MultiPortfolioRetSchema.validate(result)
 
 
-def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchema:
+def generate_returns_from_weights(
+    weights: PortfolioSchema, costs: bool = True
+) -> PortfolioRetSchema:
     """
     Generate portfolio returns from given portfolio weights.
 
@@ -129,6 +145,13 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
         - ``date`` (date): The date for each weight.
         - ``barrid`` (str): The unique asset identifier.
         - ``weight`` (float): The portfolio weight assigned to the asset.
+    costs : bool, default True
+        Subtract half-spread trading costs
+        (:func:`sf_quant.performance.generate_trading_costs`) from the return
+        of the period each trade opens. ``False`` gives gross returns. **Trades
+        before 2010-11-22 cost 0**: Barra's bid-ask spreads start then, so net
+        returns before that date are gross returns, and a
+        ``MissingSpreadWarning`` says so.
 
     Returns
     -------
@@ -145,6 +168,7 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
     - Returns are computed as the weighted sum of returns by portfolio.
     - Weights are matched with returns on the same date, so build them from
       signals lagged one day.
+    - The first date is the starting portfolio and pays no trading costs.
 
     Examples
     --------
@@ -158,7 +182,7 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
     ...         'weight': [0.5, 0.5, 0.3, 0.7]
     ...     }
     ... )
-    >>> returns = sfp.generate_returns_from_weights(weights)
+    >>> returns = sfp.generate_returns_from_weights(weights, costs=False)
     >>> returns
     shape: (2, 2)
     ┌────────────┬────────────┐
@@ -181,6 +205,8 @@ def generate_returns_from_weights(weights: PortfolioSchema) -> PortfolioRetSchem
         ])
         .sort("date")
     )
+    if costs:
+        result = _net(result, weights)
     return PortfolioRetSchema.validate(result)
 
 
@@ -230,4 +256,24 @@ def _held_returns(barrids: pl.Series, start, end) -> pl.DataFrame:
         )
         .select("date", "barrid", "return")
         .collect()
+    )
+
+
+def _net(
+    result: pl.DataFrame, weights: pl.DataFrame, portfolios: list[str] | None = None
+) -> pl.DataFrame:
+    """Returns less the trading costs of the date that opened each period.
+
+    With ``portfolios``, only those rows of a multi-portfolio result pay.
+    """
+    # Imported here: the costs module builds on this one.
+    from sf_quant.performance.costs import _period_costs
+
+    cost = pl.col("cost").fill_null(0.0)
+    if portfolios is not None:
+        cost = pl.when(pl.col("portfolio").is_in(portfolios)).then(cost).otherwise(0.0)
+    return (
+        result.join(_period_costs(weights), on="date", how="left")
+        .with_columns(pl.col("return").sub(cost))
+        .drop("cost")
     )

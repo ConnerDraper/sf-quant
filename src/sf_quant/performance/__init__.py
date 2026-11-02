@@ -6,6 +6,7 @@ internal computation details hidden.
 """
 
 from .returns import generate_returns_from_weights, generate_multi_returns_from_weights
+from .costs import generate_trading_costs, MissingSpreadWarning
 from .leverage import generate_leverage_from_weights
 from .drawdown import generate_drawdown_from_returns
 from .tables import (
@@ -33,6 +34,9 @@ __all__ = [
     # Returns
     "generate_returns_from_weights",
     "generate_multi_returns_from_weights",
+    # Trading costs
+    "generate_trading_costs",
+    "MissingSpreadWarning",
     # Leverage
     "generate_leverage_from_weights",
     # Drawdown
