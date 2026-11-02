@@ -197,6 +197,121 @@ def dynamic_mve_optimizer(
     return weights
 
 
+def cost_aware_mve_optimizer(
+    ids: list[str],
+    alphas: np.ndarray,
+    factor_exposures: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific_risk: np.ndarray,
+    constraints: list[Constraint],
+    previous_weights: np.ndarray,
+    half_spreads: np.ndarray,
+    cost_aversion: float,
+    target_active_risk: float = 0.05,
+    betas: np.ndarray | None = None,
+    benchmark_weights: np.ndarray | None = None,
+) -> pl.DataFrame:
+    """
+    Active-weight optimizer that charges each trade half the bid-ask spread.
+
+    Solves for active weights :math:`h` maximizing expected alpha net of trading
+    costs,
+
+    .. math::
+
+        \\max_h \\; \\alpha^\\top h - \\lambda \\sum_i c_i \\, |h_i - h_i^{\\text{prev}}|
+
+    subject to the risk cap :math:`h^\\top V h \\le \\sigma_{\\text{target}}^2`
+    and the supplied ``Constraint`` objects, where :math:`c_i` is asset *i*'s
+    half-spread (the cost of buying at the ask or selling at the bid) and
+    :math:`h^{\\text{prev}}` the active weights held before trading. The
+    optimizer only trades an asset when the expected gain beats its cost, so
+    liquid assets are traded freely and expensive ones barely move.
+    ``cost_aversion`` (:math:`\\lambda`) sets how cautious it is; 0 gives the
+    same portfolio as :func:`dynamic_mve_optimizer`.
+
+    Because each day's solution depends on the previous day's weights, a
+    backtest with this optimizer must run in date order.
+
+    Parameters
+    ----------
+    ids : list[str]
+        Asset identifiers.
+    alphas : np.ndarray
+        Expected returns, shape (n_assets,).
+    factor_exposures : np.ndarray
+        B matrix of shape (n_assets, n_factors).
+    factor_covariance : np.ndarray
+        F matrix of shape (n_factors, n_factors).
+    specific_risk : np.ndarray
+        D vector of shape (n_assets,), specific variance per asset.
+    constraints : list[Constraint]
+        ``Constraint`` objects to enforce, e.g. ``[ZeroInvestment(), LongOnly(),
+        ZeroBeta()]`` for the Silver Fund mandate.
+    previous_weights : np.ndarray
+        Active weights held before trading, in ``ids`` order (0 for new names).
+    half_spreads : np.ndarray
+        Half the bid-ask spread over price, per asset (0 where unknown).
+    cost_aversion : float
+        :math:`\\lambda`, the weight on trading costs in the objective.
+    target_active_risk : float, default 0.05
+        Annualized active risk cap.
+    betas : np.ndarray, optional
+        Predicted betas, required by beta constraints.
+    benchmark_weights : np.ndarray, optional
+        Benchmark weights, required by total-space constraints such as ``LongOnly``.
+
+    Returns
+    -------
+    pl.DataFrame
+        - ``barrid`` : str, asset identifier.
+        - ``weight`` : float, optimized active weight.
+        - ``active_risk`` : float, model-predicted annualized active risk.
+        - ``cost`` : float, half-spread cost of the day's trades, as a fraction
+          of capital.
+
+    Notes
+    -----
+    Specific risk enters as a single cone (the norm of :math:`\\sqrt{D} \\circ h`)
+    rather than one cone per asset, which solves several times faster with the
+    same solution.
+    """
+    n_assets = len(alphas)
+    h = cp.Variable(n_assets)
+    factor_variance = cp.quad_form(factor_exposures.T @ h, factor_covariance)
+    specific_variance = cp.sum_squares(cp.multiply(np.sqrt(specific_risk), h))
+    te_constraint = factor_variance + specific_variance <= target_active_risk**2
+    cvxpy_constraints = [te_constraint]
+    if constraints:
+        constructed = _construct_constraints(constraints, betas=betas, benchmark_weights=benchmark_weights)
+        cvxpy_constraints.extend([c(h) for c in constructed])
+
+    objective = alphas @ h
+    if cost_aversion > 0:
+        objective = objective - cost_aversion * (half_spreads @ cp.abs(h - previous_weights))
+    problem = cp.Problem(cp.Maximize(objective), cvxpy_constraints)
+    try:
+        problem.solve(solver="CLARABEL", max_threads=1)
+    except cp.error.SolverError:
+        # With the cost term CLARABEL occasionally stops on a well-posed problem (one day
+        # in 2015 of a daily backtest); SCS is slower but solves it.
+        problem.solve(solver="SCS", max_iters=20000)
+
+    if problem.status not in ["optimal", "optimal_inaccurate"]:
+        raise ValueError(f"Optimization failed. Status: {problem.status}")
+    _check_inaccurate(problem, scale={te_constraint.id: target_active_risk**2})
+
+    optimal_h = h.value
+    loadings = factor_exposures.T @ optimal_h
+    variance = loadings @ factor_covariance @ loadings + np.sum(specific_risk * optimal_h**2)
+    return pl.DataFrame({
+        "barrid": ids,
+        "weight": optimal_h,
+        "active_risk": float(np.sqrt(max(0.0, variance))),
+        "cost": float(half_spreads @ np.abs(optimal_h - previous_weights)),
+    })
+
+
 def _quadratic_program(
     alphas: np.ndarray,
     factor_exposures: np.ndarray,
