@@ -15,6 +15,7 @@ from .exposures import load_exposures, load_exposures_by_date, get_exposures_col
 from .covariances import load_covariances_by_date, get_covariances_columns
 from .covariance_matrix import construct_covariance_matrix, construct_factor_model_components
 from .benchmark import load_benchmark, load_benchmark_returns
+from .spreads import load_half_spreads
 from .factors import load_factors, get_factors_columns, get_factor_names
 from .fama_french import load_fama_french, get_fama_french_columns
 from .signals import load_signals, load_signals_by_date, get_signal_names
@@ -45,6 +46,7 @@ __all__ = [
     "construct_factor_model_components",
     "load_benchmark",
     "load_benchmark_returns",
+    "load_half_spreads",
     "load_factors",
     "get_factors_columns",
     "get_factor_names",
