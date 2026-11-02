@@ -90,3 +90,32 @@ def test_a_trade_without_a_spread_costs_nothing_and_warns():
         out = generate_trading_costs(weights)
     assert out.filter(pl.col("barrid") == "C")["cost"].item() == 0.0
     assert out.filter(pl.col("barrid") == "A")["cost"].item() == pytest.approx(1.0 * 0.001)  # closing A
+
+
+def test_turnover_counts_opening_and_closing_positions(monkeypatch):
+    """All in A one day, all in B the next: every day sells 1 and buys 1."""
+    days = [dt.date(2023, 1, 1) + dt.timedelta(days=i) for i in range(260)]
+    assets = pl.DataFrame(
+        {
+            "date": days * 2,
+            "barrid": ["A"] * 260 + ["B"] * 260,
+            "return": [0.0] * 520,
+            "price": [10.0] * 520,
+            "average_daily_bid_ask_spread_30": [0.02] * 520,
+            "bid_ask_spread": [0.02] * 520,
+        }
+    )
+
+    class LongStub:
+        def scan(self, year=None):
+            return assets.lazy()
+
+    monkeypatch.setattr(returns_module, "assets_table", LongStub())
+    monkeypatch.setattr(spreads_module, "assets_table", LongStub())
+    weights = pl.DataFrame({"date": days, "barrid": ["A", "B"] * 130, "weight": [1.0] * 260})
+
+    from sf_quant.performance.turnover import _compute_turnover
+
+    out = _compute_turnover(weights).drop_nulls()
+    assert out.height == 259 - 251  # the first date isn't counted; 252-day warm-up
+    assert out["two_sided_turnover"].to_list() == pytest.approx([2.0] * out.height)
