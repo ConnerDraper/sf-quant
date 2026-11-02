@@ -1,12 +1,15 @@
+import datetime as dt
+
 import polars as pl
 from sf_quant.data._tables import assets_table
 from sf_quant.data.benchmark import load_benchmark
+from sf_quant.data.delistings import load_delistings
 from sf_quant.schema.portfolio_schema import PortfolioSchema
 from sf_quant.schema.returns_schema import PortfolioRetSchema, MultiPortfolioRetSchema
 
 
 def generate_multi_returns_from_weights(
-    weights: PortfolioSchema, costs: bool = True
+    weights: PortfolioSchema, costs: bool = True, delistings: bool = True
 ) -> MultiPortfolioRetSchema:
     """
     Generate portfolio, benchmark, and active returns from given portfolio weights.
@@ -32,6 +35,11 @@ def generate_multi_returns_from_weights(
         before 2010-11-22 cost 0**: Barra's bid-ask spreads start then, so net
         returns before that date are gross returns, and a
         ``MissingSpreadWarning`` says so.
+    delistings : bool, default True
+        Add each delisted name's CRSP delisting return
+        (:func:`sf_quant.data.load_delistings`) to the period holding its last
+        trading day. Needs the CRSP tables in the data lake; ``False`` runs
+        without them, and a delisted name's last move counts as 0.
 
     Returns
     -------
@@ -100,7 +108,7 @@ def generate_multi_returns_from_weights(
         benchmark, on=["date", "barrid"], how="full", coalesce=True, suffix="_bmk"
     ).with_columns(pl.col("weight", "weight_bmk").fill_null(0.0))
 
-    returns = _period_returns(positions["barrid"], weights["date"])
+    returns = _period_returns(positions["barrid"], weights["date"], delistings)
 
     joined = (
         positions.join(returns, on=["date", "barrid"], how="left")
@@ -128,7 +136,7 @@ def generate_multi_returns_from_weights(
 
 
 def generate_returns_from_weights(
-    weights: PortfolioSchema, costs: bool = True
+    weights: PortfolioSchema, costs: bool = True, delistings: bool = True
 ) -> PortfolioRetSchema:
     """
     Generate portfolio returns from given portfolio weights.
@@ -152,6 +160,11 @@ def generate_returns_from_weights(
         before 2010-11-22 cost 0**: Barra's bid-ask spreads start then, so net
         returns before that date are gross returns, and a
         ``MissingSpreadWarning`` says so.
+    delistings : bool, default True
+        Add each delisted name's CRSP delisting return
+        (:func:`sf_quant.data.load_delistings`) to the period holding its last
+        trading day. Needs the CRSP tables in the data lake; ``False`` runs
+        without them, and a delisted name's last move counts as 0.
 
     Returns
     -------
@@ -194,7 +207,7 @@ def generate_returns_from_weights(
     │ 2024-01-03 ┆ 0.020741   │
     └────────────┴────────────┘
     """
-    returns = _period_returns(weights["barrid"], weights["date"])
+    returns = _period_returns(weights["barrid"], weights["date"], delistings)
 
     joined = weights.join(returns, on=["date", "barrid"], how="left")
 
@@ -210,7 +223,7 @@ def generate_returns_from_weights(
     return PortfolioRetSchema.validate(result)
 
 
-def _period_returns(barrids: pl.Series, dates: pl.Series) -> pl.DataFrame:
+def _period_returns(barrids: pl.Series, dates: pl.Series, delistings: bool = False) -> pl.DataFrame:
     """
     Each name's return over the holding period that starts on each weight date.
 
@@ -219,13 +232,19 @@ def _period_returns(barrids: pl.Series, dates: pl.Series) -> pl.DataFrame:
     weight date's period is that day alone. With weights on every trading day
     each period is one day, the plain daily return. Keyed by ``date``, the
     weight date that opens the period, in decimal.
+
+    With ``delistings``, a delisted name's delisting return compounds into the
+    period holding its last trading day (:func:`_delisting_returns`).
     """
     formation = pl.DataFrame({"date": dates.unique().sort()})
+    start, end = formation["date"].min(), formation["date"].max()
     daily = (
-        _held_returns(barrids, formation["date"].min(), formation["date"].max())
+        _held_returns(barrids, start, end)
         .drop_nulls("return")
         .with_columns(pl.col("return").truediv(100))
     )
+    if delistings:
+        daily = pl.concat([daily, _delisting_returns(barrids, start, end).cast(daily.schema)])
     calendar = daily.select("date").unique().sort("date")
     periods = calendar.join_asof(
         formation.with_columns(pl.col("date").alias("form_date")),
@@ -256,6 +275,40 @@ def _held_returns(barrids: pl.Series, start, end) -> pl.DataFrame:
         )
         .select("date", "barrid", "return")
         .collect()
+    )
+
+
+def _delisting_returns(barrids: pl.Series, start, end) -> pl.DataFrame:
+    """
+    Each delisted name's resolved delisting return, dated its last day of Barra returns.
+
+    Weights dated t earn day t's return, and a name has no data after its last
+    trading day, so no later weights can hold it: whoever holds it on that day
+    is left with the delisting value instead of the last price. The return is
+    only added where Barra's series has ended by CRSP's last trading date, so
+    a return Barra already has is never counted twice. In decimal.
+    """
+    delisted = load_delistings(start, end).filter(
+        pl.col("barrid").is_in(barrids.unique().implode())
+    )
+    if delisted.is_empty():
+        return pl.DataFrame(schema={"date": pl.Date, "barrid": pl.String, "return": pl.Float64})
+    # Look past ``end`` so a series that runs on beyond the window isn't taken as ended.
+    barra_last = (
+        assets_table.scan()
+        .filter(
+            pl.col("date").is_between(start, end + dt.timedelta(days=14)),
+            pl.col("barrid").is_in(delisted["barrid"].implode()),
+            pl.col("return").is_not_null(),
+        )
+        .group_by("barrid")
+        .agg(pl.col("date").max().alias("barra_last"))
+        .collect()
+    )
+    return (
+        delisted.join(barra_last, on="barrid", how="inner")
+        .filter(pl.col("barra_last") <= pl.col("last_trading_date"))
+        .select(pl.col("barra_last").alias("date"), "barrid", pl.col("delret_used").alias("return"))
     )
 
 

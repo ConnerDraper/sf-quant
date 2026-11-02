@@ -29,6 +29,11 @@ ASSETS = pl.DataFrame(
 )
 
 
+NO_DELISTINGS = pl.DataFrame(
+    schema={"barrid": pl.String, "last_trading_date": pl.Date, "delret_used": pl.Float64}
+)
+
+
 class StubTable:
     def scan(self, year=None):
         return ASSETS.lazy()
@@ -38,6 +43,7 @@ class StubTable:
 def stub_assets(monkeypatch):
     monkeypatch.setattr(returns_module, "assets_table", StubTable())
     monkeypatch.setattr(spreads_module, "assets_table", StubTable())
+    monkeypatch.setattr(returns_module, "load_delistings", lambda start, end: NO_DELISTINGS)
 
 
 def stub_benchmark(monkeypatch, barrids, weights):
@@ -85,3 +91,29 @@ def test_weights_earn_every_day_until_the_next_rebalance():
     out = generate_returns_from_weights(weights)
     assert out["date"].to_list() == [DATES[0], DATES[2]]
     assert out["return"].to_list() == pytest.approx([1.01 * 1.02 - 1, 0.03])
+
+
+def stub_delisting(monkeypatch, barrid, last_trading_date, delret):
+    frame = pl.DataFrame(
+        {"barrid": [barrid], "last_trading_date": [last_trading_date], "delret_used": [delret]}
+    )
+    monkeypatch.setattr(returns_module, "load_delistings", lambda start, end: frame)
+
+
+def test_a_delisting_return_compounds_into_the_period_of_the_last_trading_day(monkeypatch):
+    """A's Barra returns end on DATES[2], its last trading day, then it delists at -50%."""
+    stub_delisting(monkeypatch, "A", DATES[2], -0.5)
+    weights = pl.DataFrame({"date": [DATES[0], DATES[2]], "barrid": ["A", "A"], "weight": [1.0, 1.0]})
+    out = generate_returns_from_weights(weights)
+    assert out["return"].to_list() == pytest.approx([1.01 * 1.02 - 1, 1.03 * 0.5 - 1])
+    gross = generate_returns_from_weights(weights, delistings=False)
+    assert gross["return"].to_list() == pytest.approx([1.01 * 1.02 - 1, 0.03])
+
+
+def test_a_delisting_return_barra_already_has_is_not_added(monkeypatch):
+    """CRSP says A last traded on DATES[1], but Barra has A's return on DATES[2]."""
+    stub_delisting(monkeypatch, "A", DATES[1], -0.5)
+    weights = pl.DataFrame({"date": DATES, "barrid": ["A"] * 3, "weight": [1.0] * 3})
+    out = generate_returns_from_weights(weights)
+    assert out["return"].to_list() == pytest.approx([0.01, 0.02, 0.03])
+

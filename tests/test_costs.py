@@ -30,6 +30,11 @@ ASSETS = pl.DataFrame(
 )
 
 
+NO_DELISTINGS = pl.DataFrame(
+    schema={"barrid": pl.String, "last_trading_date": pl.Date, "delret_used": pl.Float64}
+)
+
+
 class StubTable:
     def scan(self, year=None):
         return ASSETS.lazy()
@@ -39,6 +44,7 @@ class StubTable:
 def stub_assets(monkeypatch):
     monkeypatch.setattr(returns_module, "assets_table", StubTable())
     monkeypatch.setattr(spreads_module, "assets_table", StubTable())
+    monkeypatch.setattr(returns_module, "load_delistings", lambda start, end: NO_DELISTINGS)
 
 
 def weights_frame(rows):
