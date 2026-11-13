@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from sf_quant.optimizer import calibrate_gamma
+from sf_quant.optimizer import ZeroInvestment, calibrate_gamma, cost_aware_mve_optimizer
 
 
 def problem(n=40, k=3, seed=4):
@@ -47,3 +47,36 @@ def test_the_unconstrained_portfolio_lands_on_the_target():
 def test_zero_alphas_give_zero_gamma():
     p = problem()
     assert calibrate_gamma(**{**risk_model(p), "alphas": np.zeros(len(p["ids"]))}) == 0.0
+
+
+def optimize(p, constraints, gamma, cap=0.05, lam=0.0, previous=None):
+    n = len(p["ids"])
+    out = cost_aware_mve_optimizer(
+        **p, constraints=constraints, previous_weights=np.zeros(n) if previous is None else previous,
+        half_spreads=np.full(n, 0.001), cost_aversion=lam, target_active_risk=cap, gamma=gamma)
+    return out["weight"].to_numpy(), out
+
+
+def test_gamma_zero_changes_nothing():
+    p = problem()
+    n = len(p["ids"])
+    default = cost_aware_mve_optimizer(**p, constraints=[ZeroInvestment()], previous_weights=np.zeros(n),
+                                       half_spreads=np.full(n, 0.001), cost_aversion=0.0)["weight"].to_numpy()
+    h, _ = optimize(p, [ZeroInvestment()], 0.0)
+    assert h == pytest.approx(default, abs=1e-9)
+
+
+def test_with_a_slack_cap_the_solution_is_v_inverse_alpha_over_gamma():
+    p = problem()
+    gamma = calibrate_gamma(**risk_model(p), target_active_risk=0.01)
+    h, out = optimize(p, [], gamma, cap=0.05)
+    assert h == pytest.approx(np.linalg.solve(covariance(p), p["alphas"]) / gamma, abs=1e-5)
+    assert out["active_risk"][0] == pytest.approx(0.01, rel=1e-3)
+
+
+def test_a_larger_gamma_takes_less_risk():
+    p = problem()
+    gamma = calibrate_gamma(**risk_model(p), target_active_risk=0.01)
+    _, low = optimize(p, [ZeroInvestment()], gamma)
+    _, high = optimize(p, [ZeroInvestment()], 4 * gamma)
+    assert high["active_risk"][0] < low["active_risk"][0]

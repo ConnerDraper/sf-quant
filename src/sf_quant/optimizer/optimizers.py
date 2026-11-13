@@ -210,16 +210,18 @@ def cost_aware_mve_optimizer(
     target_active_risk: float = 0.05,
     betas: np.ndarray | None = None,
     benchmark_weights: np.ndarray | None = None,
+    gamma: float = 0.0,
 ) -> pl.DataFrame:
     """
     Active-weight optimizer that charges each trade half the bid-ask spread.
 
     Solves for active weights :math:`h` maximizing expected alpha net of trading
-    costs,
+    costs and, when ``gamma`` > 0, a risk penalty,
 
     .. math::
 
         \\max_h \\; \\alpha^\\top h - \\lambda \\sum_i c_i \\, |h_i - h_i^{\\text{prev}}|
+        - \\tfrac{\\gamma}{2} h^\\top V h
 
     subject to the risk cap :math:`h^\\top V h \\le \\sigma_{\\text{target}}^2`
     and the supplied ``Constraint`` objects, where :math:`c_i` is asset *i*'s
@@ -228,7 +230,10 @@ def cost_aware_mve_optimizer(
     optimizer only trades an asset when the expected gain beats its cost, so
     liquid assets are traded freely and expensive ones barely move.
     ``cost_aversion`` (:math:`\\lambda`) sets how cautious it is; 0 gives the
-    same portfolio as :func:`dynamic_mve_optimizer`.
+    same portfolio as :func:`dynamic_mve_optimizer`. With ``gamma`` > 0 the
+    optimizer stops adding risk where the next unit of it earns too little, so the
+    cap is a ceiling rather than a target; :func:`calibrate_gamma` gives the
+    ``gamma`` at which an unconstrained portfolio would sit exactly at a chosen risk.
 
     Because each day's solution depends on the previous day's weights, a
     backtest with this optimizer must run in date order.
@@ -260,6 +265,8 @@ def cost_aware_mve_optimizer(
         Predicted betas, required by beta constraints.
     benchmark_weights : np.ndarray, optional
         Benchmark weights, required by total-space constraints such as ``LongOnly``.
+    gamma : float, default 0.0
+        Risk aversion :math:`\\gamma`; 0 leaves only the risk cap.
 
     Returns
     -------
@@ -287,6 +294,8 @@ def cost_aware_mve_optimizer(
         cvxpy_constraints.extend([c(h) for c in constructed])
 
     objective = alphas @ h
+    if gamma > 0:
+        objective = objective - gamma / 2 * (factor_variance + specific_variance)
     if cost_aversion > 0:
         objective = objective - cost_aversion * (half_spreads @ cp.abs(h - previous_weights))
     problem = cp.Problem(cp.Maximize(objective), cvxpy_constraints)
