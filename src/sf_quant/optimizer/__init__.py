@@ -5,7 +5,7 @@ portfolios, computing weights, and evaluating constraints, while keeping
 internal mathematical and solver details hidden.
 """
 
-from .optimizers import mve_optimizer, dynamic_mve_optimizer, cost_aware_mve_optimizer
+from .optimizers import mve_optimizer, dynamic_mve_optimizer, cost_aware_mve_optimizer, calibrate_gamma
 from .constraints import (
     Constraint,
     LongOnly,
@@ -21,6 +21,7 @@ __all__ = [
     "mve_optimizer",
     "dynamic_mve_optimizer",
     "cost_aware_mve_optimizer",
+    "calibrate_gamma",
     "Constraint",
     "LongOnly",
     "FullInvestment",

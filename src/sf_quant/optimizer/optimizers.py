@@ -312,6 +312,54 @@ def cost_aware_mve_optimizer(
     })
 
 
+def calibrate_gamma(
+    alphas: np.ndarray,
+    factor_exposures: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific_risk: np.ndarray,
+    target_active_risk: float = 0.05,
+) -> float:
+    """
+    Risk aversion that puts the unconstrained mean-variance portfolio at a target risk.
+
+    Without constraints, :math:`\\max_h \\alpha^\\top h - \\tfrac{\\gamma}{2} h^\\top V h` has the
+    solution :math:`h = V^{-1}\\alpha / \\gamma`, whose risk is
+    :math:`\\sqrt{\\alpha^\\top V^{-1} \\alpha} / \\gamma`. So
+
+    .. math::
+
+        \\gamma = \\frac{\\sqrt{\\alpha^\\top V^{-1} \\alpha}}{\\sigma_{\\text{target}}},
+        \\qquad V = B F B^\\top + \\text{diag}(D).
+
+    :math:`V^{-1}\\alpha` uses the Woodbury identity, so only a factor-sized matrix is
+    inverted. Holding this :math:`\\gamma` fixed (e.g. for a year) lets risk rise and fall
+    with the strength of the alphas instead of being pinned to the target.
+
+    Parameters
+    ----------
+    alphas : np.ndarray
+        Expected returns, shape (n_assets,).
+    factor_exposures : np.ndarray
+        B matrix of shape (n_assets, n_factors).
+    factor_covariance : np.ndarray
+        F matrix of shape (n_factors, n_factors).
+    specific_risk : np.ndarray
+        D vector of shape (n_assets,), specific variance per asset.
+    target_active_risk : float, default 0.05
+        Annualized risk the unconstrained portfolio should have.
+
+    Returns
+    -------
+    float
+        :math:`\\gamma`; 0 when every alpha is 0.
+    """
+    u = alphas / specific_risk
+    w = factor_exposures.T @ u
+    m = np.linalg.inv(factor_covariance) + (factor_exposures.T * (1 / specific_risk)) @ factor_exposures
+    q = float(alphas @ u - w @ np.linalg.solve(m, w))
+    return float(np.sqrt(max(q, 0.0)) / target_active_risk)
+
+
 def _quadratic_program(
     alphas: np.ndarray,
     factor_exposures: np.ndarray,
