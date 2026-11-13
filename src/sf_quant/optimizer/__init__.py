@@ -15,6 +15,8 @@ from .constraints import (
     GrossLeverage,
     UnitBeta,
     ZeroBeta,
+    MaxShort,
+    GroupNeutral,
 )
 
 __all__ = [
@@ -30,4 +32,6 @@ __all__ = [
     "GrossLeverage",
     "UnitBeta",
     "ZeroBeta",
+    "MaxShort",
+    "GroupNeutral",
 ]

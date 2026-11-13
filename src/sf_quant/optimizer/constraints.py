@@ -183,6 +183,61 @@ class ZeroBeta(Constraint):
         return betas @ weights == 0
 
 
+
+class MaxShort(Constraint):
+    """
+    Caps how far any asset's total weight can go below zero.
+
+    - Total space (no benchmark): :math:`w \\ge -s`
+    - Active space (with benchmark): :math:`h + b \\ge -s`
+
+    ``MaxShort(0)`` is :class:`LongOnly`; a small positive limit allows a little
+    shorting in every name, between long-only and no limit at all.
+
+    Parameters
+    ----------
+    limit : float
+        Largest short position per asset, as a fraction of capital (0.0025 = 0.25%).
+    """
+
+    def __init__(self, limit: float):
+        if not isinstance(limit, Real) or limit < 0:
+            raise ValueError("limit must be a non-negative number")
+        self.limit = float(limit)
+
+    def __call__(self, weights: cp.Variable, **kwargs) -> cp.Constraint:
+        """Apply the short limit."""
+        benchmark_weights: np.ndarray | None = kwargs.get("benchmark_weights")
+        total_weights = (
+            weights if benchmark_weights is None else weights + benchmark_weights
+        )
+        return total_weights >= -self.limit
+
+
+class GroupNeutral(Constraint):
+    """
+    Zero net active weight within each group of assets.
+
+    For every group :math:`g`, :math:`\\sum_{i \\in g} h_i = 0`, so bets are
+    funded from inside their own group (e.g. a size or industry bucket) rather
+    than from the rest of the universe.
+
+    Parameters
+    ----------
+    groups : np.ndarray
+        One group label per asset, in the same order as the weights.
+    """
+
+    def __init__(self, groups: np.ndarray):
+        self.groups = np.asarray(groups)
+
+    def __call__(self, weights: cp.Variable, **kwargs) -> cp.Constraint:
+        """Apply the group-neutral constraint."""
+        labels = np.unique(self.groups)
+        membership = (self.groups[None, :] == labels[:, None]).astype(float)
+        return membership @ weights == 0
+
+
 def _construct_constraints(
     constraints: list[Constraint],
     betas: np.ndarray | None = None,

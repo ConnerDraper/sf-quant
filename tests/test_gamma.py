@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from sf_quant.optimizer import ZeroInvestment, calibrate_gamma, cost_aware_mve_optimizer
+from sf_quant.optimizer import (GroupNeutral, LongOnly, MaxShort, ZeroBeta, ZeroInvestment, calibrate_gamma,
+                                cost_aware_mve_optimizer)
 
 
 def problem(n=40, k=3, seed=4):
@@ -80,3 +81,31 @@ def test_a_larger_gamma_takes_less_risk():
     _, low = optimize(p, [ZeroInvestment()], gamma)
     _, high = optimize(p, [ZeroInvestment()], 4 * gamma)
     assert high["active_risk"][0] < low["active_risk"][0]
+
+
+def test_max_short_bounds_total_weight():
+    p = problem()
+    h, _ = optimize(p, [ZeroInvestment(), ZeroBeta(), MaxShort(0.002)], 0.0)
+    assert (h + p["benchmark_weights"]).min() >= -0.002 - 1e-7
+    assert (h + p["benchmark_weights"]).min() < -0.001  # the limit binds here
+
+
+def test_max_short_zero_is_long_only():
+    p = problem()
+    a, _ = optimize(p, [ZeroInvestment(), ZeroBeta(), MaxShort(0.0)], 0.0)
+    b, _ = optimize(p, [ZeroInvestment(), ZeroBeta(), LongOnly()], 0.0)
+    assert a == pytest.approx(b, abs=1e-6)
+
+
+def test_max_short_rejects_a_negative_limit():
+    with pytest.raises(ValueError):
+        MaxShort(-0.01)
+
+
+def test_group_neutral_nets_each_group_to_zero():
+    p = problem()
+    groups = np.arange(len(p["ids"])) % 5
+    h, _ = optimize(p, [ZeroInvestment(), GroupNeutral(groups)], 0.0)
+    for g in range(5):
+        assert abs(h[groups == g].sum()) < 1e-7
+    assert np.abs(h).sum() > 0.01  # still takes positions
